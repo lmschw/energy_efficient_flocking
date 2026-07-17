@@ -1,0 +1,6 @@
+.venv/
+venv/
+outcmaes/
+__pycache__/
+*.npy
+*.cpyc
