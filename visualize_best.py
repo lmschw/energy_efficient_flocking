@@ -1,13 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-from simulation_without_energy import AdvancedThymioSwarmEnv
+from without_energy.simulation_without_energy import AdvancedThymioSwarmEnv as env_without_battery
+from with_energy.simulation_with_energy import AdvancedThymioSwarmEnv as env_with_battery
 
-def run_live_visualization(genome_path="winning_abcd_rules.npy"):
-    NUM_SENSORS = 7
-    NUM_INPUTS = NUM_SENSORS + 1  # 8
-    NUM_OUTPUTS = 2
-    MATRIX_SIZE = NUM_OUTPUTS * NUM_INPUTS  # 16
+def run_live_visualization(genome_path="winning_abcd_rules.npy", uses_energy=False):
+    if uses_energy:
+        NUM_SENSORS = 7
+        NUM_INPUTS = NUM_SENSORS + 1 + 1  # Updated to 9 to match the energy expansion!
+        NUM_OUTPUTS = 2
+        MATRIX_SIZE = NUM_OUTPUTS * NUM_INPUTS  # Now 18 parameters per rule matrix (72 total)
+    else:
+        NUM_SENSORS = 7
+        NUM_INPUTS = NUM_SENSORS + 1  # 8
+        NUM_OUTPUTS = 2
+        MATRIX_SIZE = NUM_OUTPUTS * NUM_INPUTS  # 16
     
     try:
         flat_genome = np.load(genome_path)
@@ -22,7 +29,10 @@ def run_live_visualization(genome_path="winning_abcd_rules.npy"):
     D = flat_genome[3*MATRIX_SIZE:4*MATRIX_SIZE].reshape(NUM_OUTPUTS, NUM_INPUTS)
 
     # Spawn the swarm in an open, unbounded universe
-    env = AdvancedThymioSwarmEnv(num_robots=15, arena_size=10.0, num_sensors=NUM_SENSORS)
+    if uses_energy:
+        env = env_with_battery(num_robots=15, arena_size=10.0, num_sensors=NUM_SENSORS)
+    else:
+        env = env_without_battery(num_robots=15, arena_size=10.0, num_sensors=NUM_SENSORS)
 
     fig, ax = plt.subplots(figsize=(8, 8))
     ax.set_title("Polimi Plastic Swarm - Infinite Plane Tracking", fontsize=12, fontweight='bold')

@@ -4,3 +4,4 @@ outcmaes/
 __pycache__/
 *.npy
 *.cpyc
+*.mp4

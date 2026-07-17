@@ -1,6 +1,6 @@
 import numpy as np
 import cma
-from simulation_without_energy import AdvancedThymioSwarmEnv
+from without_energy.simulation_without_energy import AdvancedThymioSwarmEnv
 
 NUM_SENSORS = 7
 NUM_INPUTS = NUM_SENSORS + 1  
