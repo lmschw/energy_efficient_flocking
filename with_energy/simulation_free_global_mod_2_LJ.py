@@ -8,38 +8,25 @@ def wrap_to_pi(angle):
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
 def RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny, useGPU=0):
-    """
-    Vectorized high-performance alternative to MATLAB's compiled MEX file.
-    Eliminates raw Python loops to speed up execution by 100x-1000x.
-    """
-    xVals = np.linspace(xRange[0], xRange[1], Nx)  # Shape: (Nx,)
-    yVals = np.linspace(yRange[0], yRange[1], Ny)  # Shape: (Ny,)
-    powerVals = np.ones((Nx, Ny)) * Uinf           # Shape: (Nx, Ny)
+    """Vectorized high-performance alternative yielding identical matrix outputs to the original."""
+    xVals = np.linspace(xRange[0], xRange[1], Nx)
+    yVals = np.linspace(yRange[0], yRange[1], Ny)
+    powerVals = np.ones((Nx, Ny)) * Uinf
     
-    # Process each agent using optimized array broadcasting
     for i in range(agents.shape[0]):
         rx, ry = agents[i, 0], agents[i, 1]
-        
-        # 1. Mask out anything not strictly downstream (+X) of the agent
-        downstream_mask = xVals > rx  # Shape: (Nx,)
+        downstream_mask = xVals > rx
         if not np.any(downstream_mask):
             continue
             
-        # 2. Compute downstream distance (dx) grid array
-        dx = (xVals - rx)[:, None]  # Shape: (Nx, 1)
-        wake_width = wind_rad + 0.05 * dx  # Shape: (Nx, 1)
+        dx = (xVals - rx)[:, None]
+        wake_width = wind_rad + 0.05 * dx
+        dy = np.abs(yVals - ry)[None, :]
         
-        # 3. Compute absolute vertical offset (dy) grid array
-        dy = np.abs(yVals - ry)[None, :]  # Shape: (1, Ny)
+        inside_wake = (dy < wake_width) & downstream_mask[:, None]
+        attenuation = 1.0 - (0.6 / (1.0 + 0.2 * dx))
+        attenuated_power = Uinf * attenuation
         
-        # 4. Generate the 2D geometric wake shadow mask
-        inside_wake = (dy < wake_width) & downstream_mask[:, None]  # Shape: (Nx, Ny)
-        
-        # 5. Apply fluid speed attenuation drop calculations
-        attenuation = 1.0 - (0.6 / (1.0 + 0.2 * dx))  # Shape: (Nx, 1)
-        attenuated_power = Uinf * attenuation         # Shape: (Nx, 1)
-        
-        # 6. Smoothly blend back into the master wind matrix
         powerVals = np.where(inside_wake, np.minimum(powerVals, attenuated_power), powerVals)
                         
     return yVals, xVals, powerVals
@@ -59,7 +46,7 @@ def dragforce(agents, wind_rad, xVals, yVals, powerVals, n_agents, vel_actual, v
         else:
             x = 0
             
-        if x < 2:  # 0-based conversion for MATLAB's (x < 3)
+        if x < 2:
             powerVals_agents[i] = 100.0
         else:
             y = np.argmin(np.abs(yVals - y_r))
@@ -133,7 +120,6 @@ def move(agents, vel, dt, v_avg, n_agents, min_dist, walls, collision_counter):
     
     return vel_actual, agents, xRange, collision_counter
 
-
 def plot_all(ax, fig, agents, r, yVals, xVals, powerVals, t, video_writer):
     ax.clear()
     X, Y = np.meshgrid(xVals, yVals)
@@ -143,12 +129,9 @@ def plot_all(ax, fig, agents, r, yVals, xVals, powerVals, t, video_writer):
     ax.set_xlabel("X - [m]")
     ax.set_ylabel("Y - [m]")
     
-    # === TRACKING MODIFICATION: Calculate Center of Mass ===
+    # Smoothly tracking Center of Mass Viewport
     com_x = np.mean(agents[:, 0])
     com_y = np.mean(agents[:, 1])
-    
-    # Dynamically center the camera viewport around the swarm centroid
-    # Maintains the exact same 10m x 10m window scale as your original design
     ax.set_xlim([com_x - 5.0, com_x + 5.0])
     ax.set_ylim([com_y - 5.0, com_y + 5.0])
     
@@ -164,19 +147,14 @@ def plot_all(ax, fig, agents, r, yVals, xVals, powerVals, t, video_writer):
         ax.quiver(x, y, -arrow_len * np.sin(theta), arrow_len * np.cos(theta), 
                   angles='xy', scale_units='xy', scale=1, color='r', width=0.004)
         
-    # Backend-Agnostic Frame Capture
     buf = io.BytesIO()
     fig.savefig(buf, format='raw')
     buf.seek(0)
-    
-    w = int(fig.bbox.bounds[2])
-    h = int(fig.bbox.bounds[3])
-    
+    w, h = int(fig.bbox.bounds[2]), int(fig.bbox.bounds[3])
     frame = np.frombuffer(buf.getvalue(), dtype=np.uint8).reshape((h, w, 4))
     buf.close()
     
     frame = cv2.cvtColor(frame, cv2.COLOR_RGBA2BGR)
-    
     if frame.shape[1] != 1200 or frame.shape[0] != 800:
         frame = cv2.resize(frame, (1200, 800))
         
@@ -187,14 +165,12 @@ def simulation_free_global_mod_2_LJ(rules=None, seed=None, visualize=False):
     if seed is not None:
         np.random.seed(seed)
         
-    # === FORCE HEADLESS MODE DURING OPTIMIZATION ===
     if not visualize:
-        plt.switch_backend('Agg')  # Prevents any GUI windows from initializing
+        plt.switch_backend('Agg')
         
-    v_out = None
-    fig, ax = None, None
+    v_out, fig, ax = None, None, None
     if visualize:
-        plt.switch_backend('TkAgg') # Safely restore interactive window for playback
+        plt.switch_backend('TkAgg')
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         v_out = cv2.VideoWriter('alone.mp4', fourcc, 10.0, (1200, 800))
         fig, ax = plt.subplots(figsize=(12, 8))
@@ -246,7 +222,7 @@ def simulation_free_global_mod_2_LJ(rules=None, seed=None, visualize=False):
     if visualize:
         plot_all(ax, fig, agents, robot_rad, yVals, xVals, powerVals, t, v_out)
     
-    # Check if incoming parameter vectors override the hardcoded properties
+    # Mapping Genome Rule Inputs Directly
     r0      = rules['r0']      if rules else 0.70
     epsilon = rules['epsilon'] if rules else 0.5
     k_align = rules['k_align'] if rules else 0.0
@@ -275,7 +251,7 @@ def simulation_free_global_mod_2_LJ(rules=None, seed=None, visualize=False):
         eyr = ey * cos_th_mat - ex * sin_th_mat
         
         mask = (R > r_min) & (R < r_cut)
-        np.fill_diagonal(mask, False)  # Sets the self-interaction diagonal to False
+        np.fill_diagonal(mask, False)
         
         sig_over_r6 = (sigma**2) / (R**2 + 1e-6)
         sig_over_r12 = sig_over_r6**2

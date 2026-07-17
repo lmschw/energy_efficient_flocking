@@ -3,7 +3,6 @@ import numpy as np
 import cma
 from simulation_free_global_mod_2_LJ import simulation_free_global_mod_2_LJ
 
-# Tracking metrics for terminal feedback
 current_candidate = 0
 total_candidates = 0
 
@@ -11,7 +10,6 @@ def fitness_wrapper(genome):
     global current_candidate
     current_candidate += 1
     
-    # Inline terminal updater
     sys.stdout.write(f"\r   ↳ Evaluating Swarm Candidate: {current_candidate}/{total_candidates} ...")
     sys.stdout.flush()
     
@@ -32,8 +30,9 @@ def fitness_wrapper(genome):
         return 99999.0  
 
 if __name__ == "__main__":
-    print("🚀 Launching High-Speed CMA-ES Optimizer...")
+    print("🚀 Launching Pure 1:1 CMA-ES Optimizer...")
     
+    # Exact original MATLAB baseline values
     initial_guess = [0.70, 0.5, 0.0, 3.0, 0.05, 0.5, 0.005]
     
     options = {
@@ -51,14 +50,13 @@ if __name__ == "__main__":
     gen = 0
     while not es.stop():
         gen += 1
-        current_candidate = 0 # Reset counter for new generation iteration
+        current_candidate = 0 
         print(f"\n📊 Starting Generation {gen:02d}:")
         
         solutions = es.ask()
         fitness_values = [fitness_wrapper(sol) for sol in solutions]
         es.tell(solutions, fitness_values)
         
-        # Clear line and show generation results
         sys.stdout.write("\r")
         print(f"✅ Generation {gen:02d} Complete | Best Negative Efficiency (Loss): {min(fitness_values):.4f}")
         
