@@ -1,72 +1,44 @@
+import argparse
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-from without_energy.simulation_without_energy import AdvancedThymioSwarmEnv as env_without_battery
-from with_energy.simulation_with_energy import AdvancedThymioSwarmEnv as env_with_battery
+from experiment.simulation_free_global_mod_2_LJ import simulation_free_global_mod_2_LJ
 
-def run_live_visualization(genome_path="winning_abcd_rules.npy", uses_energy=False):
-    if uses_energy:
-        NUM_SENSORS = 7
-        NUM_INPUTS = NUM_SENSORS + 1 + 1  # Updated to 9 to match the energy expansion!
-        NUM_OUTPUTS = 2
-        MATRIX_SIZE = NUM_OUTPUTS * NUM_INPUTS  # Now 18 parameters per rule matrix (72 total)
-    else:
-        NUM_SENSORS = 7
-        NUM_INPUTS = NUM_SENSORS + 1  # 8
-        NUM_OUTPUTS = 2
-        MATRIX_SIZE = NUM_OUTPUTS * NUM_INPUTS  # 16
-    
+# Baseline gains from the original MATLAB script (experiment/optimize.py's initial_guess),
+# used as a fallback when no optimized genome file is available.
+BASELINE_GAINS = [0.70, 0.5, 0.0, 3.0, 0.05, 0.5, 0.005]
+GAIN_NAMES = ["r0", "epsilon", "k_align", "k_goal", "K1", "K2", "U"]
+
+
+def load_rules(genome_path):
     try:
         flat_genome = np.load(genome_path)
         print(f"Loaded optimized genome rules from '{genome_path}'")
     except FileNotFoundError:
-        print("⚠️ No trained genome found. Running with random initialization.")
-        flat_genome = np.random.randn(MATRIX_SIZE * 4)
+        print(f"No genome found at '{genome_path}'. Falling back to MATLAB baseline gains.")
+        flat_genome = np.array(BASELINE_GAINS)
 
-    A = flat_genome[0:MATRIX_SIZE].reshape(NUM_OUTPUTS, NUM_INPUTS)
-    B = flat_genome[MATRIX_SIZE:2*MATRIX_SIZE].reshape(NUM_OUTPUTS, NUM_INPUTS)
-    C = flat_genome[2*MATRIX_SIZE:3*MATRIX_SIZE].reshape(NUM_OUTPUTS, NUM_INPUTS)
-    D = flat_genome[3*MATRIX_SIZE:4*MATRIX_SIZE].reshape(NUM_OUTPUTS, NUM_INPUTS)
+    return dict(zip(GAIN_NAMES, flat_genome))
 
-    # Spawn the swarm in an open, unbounded universe
-    if uses_energy:
-        env = env_with_battery(num_robots=15, arena_size=10.0, num_sensors=NUM_SENSORS)
-    else:
-        env = env_without_battery(num_robots=15, arena_size=10.0, num_sensors=NUM_SENSORS)
 
-    fig, ax = plt.subplots(figsize=(8, 8))
-    ax.set_title("Polimi Plastic Swarm - Infinite Plane Tracking", fontsize=12, fontweight='bold')
-    ax.set_aspect('equal')
-    ax.grid(True, linestyle='--', alpha=0.4)
+def run_live_visualization(genome_path="optimized_gains.npy", seed=42):
+    rules = load_rules(genome_path)
+    print("Rules:", {k: round(float(v), 4) for k, v in rules.items()})
 
-    # UI Elements
-    robot_bodies = ax.scatter(env.positions[:, 0], env.positions[:, 1], 
-                              s=250, color='crimson', edgecolors='black', zorder=3)
-    quiver = ax.quiver(env.positions[:, 0], env.positions[:, 1], 
-                       np.cos(env.headings), np.sin(env.headings), 
-                       color='darkblue', scale=22, zorder=4)
+    eff, dist_travelled, average_batt, collisions = simulation_free_global_mod_2_LJ(
+        rules=rules, seed=seed, visualize=True
+    )
 
-    def update_frame(frame_idx):
-        env.step(A, B, C, D)
-        
-        # Update physical drawing locations
-        robot_bodies.set_offsets(env.positions)
-        quiver.set_offsets(env.positions)
-        quiver.set_UVC(np.cos(env.headings), np.sin(env.headings))
-        
-        # 1:1 MATLAB TRACKING CAMERA: Center the camera viewport around the moving swarm
-        center_x = np.mean(env.positions[:, 0])
-        center_y = np.mean(env.positions[:, 1])
-        
-        # Maintain a dynamic 6x6 meter viewport centered on the flock
-        ax.set_xlim(center_x - 3.0, center_x + 3.0)
-        ax.set_ylim(center_y - 3.0, center_y + 3.0)
-        
-        return robot_bodies, quiver
+    print(f"Playback complete -- efficiency={eff:.4f}, "
+          f"distance={dist_travelled:.4f}, avg_battery={average_batt:.4f}, "
+          f"collisions={collisions}")
+    print("Video saved to 'alone.mp4'.")
 
-    ani = animation.FuncAnimation(fig, update_frame, frames=2000, interval=40, blit=False)
-    plt.show()
-    return ani
 
 if __name__ == "__main__":
-    main_animation = run_live_visualization()
+    parser = argparse.ArgumentParser(description="Play back a swarm run for a saved genome.")
+    parser.add_argument("genome_path", nargs="?", default="optimization_results/opt_small_scale_trial_03_seed_777_gains.npy",
+                         help="Path to a .npy file with the 7 LJ rule gains "
+                              "(r0, epsilon, k_align, k_goal, K1, K2, U).")
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for the run.")
+    args = parser.parse_args()
+
+    run_live_visualization(args.genome_path, args.seed)

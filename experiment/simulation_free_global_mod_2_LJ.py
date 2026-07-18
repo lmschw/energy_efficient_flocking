@@ -2,33 +2,101 @@ import numpy as np
 import cv2
 import matplotlib.pyplot as plt
 import io
+from functools import lru_cache
+from scipy.signal import convolve2d
 
 def wrap_to_pi(angle):
     """1:1 Mirror of MATLAB's wrapToPi function."""
     return (angle + np.pi) % (2 * np.pi) - np.pi
 
+@lru_cache(maxsize=None)
+def _exp_kernel(Nx, Ny, x_smoothing, y_smoothing, decay):
+    """Mirrors the exp(-decay*(|dx|+|dy|)) kernel built in RayTraceCircularRobots.m."""
+    Kx = 2 * (Nx // x_smoothing) + 1
+    Ky = 2 * (Ny // y_smoothing) + 1
+    xg, yg = np.meshgrid(np.arange(1, Kx + 1), np.arange(1, Ky + 1))
+    cx = np.ceil(Kx / 2.0)
+    cy = np.ceil(Ky / 2.0)
+    kernel = np.exp(-decay * (np.abs(xg - cx) + np.abs(yg - cy)))
+    return kernel / kernel.sum()
+
+def _replicate_smooth(P, kernel):
+    """Mirrors padarray(P, ..., 'replicate', 'both') + conv2(..., 'valid')."""
+    py, px = kernel.shape[0] // 2, kernel.shape[1] // 2
+    Ppad = np.pad(P, ((py, py), (px, px)), mode='edge')
+    return convolve2d(Ppad, kernel, mode='valid')
+
 def RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny, useGPU=0):
-    """Vectorized high-performance alternative yielding identical matrix outputs to the original."""
+    """1:1 port of RayTraceCircularRobots.m: x-marching wake persistence/recovery,
+    two exponential-kernel smoothing passes, and the run-length based wall effect."""
+    recovery_rate = 1.0
+    percent_drop = 0.25
+    max_wall_span = 0.7
+    min_power_x = 30.0
+    alpha, beta = 0.5, 0.5
+    x_smoothing1, y_smoothing1 = 100, 50
+    x_smoothing2, y_smoothing2 = 50, 50
+    min_power_y = 10.0
+
     xVals = np.linspace(xRange[0], xRange[1], Nx)
     yVals = np.linspace(yRange[0], yRange[1], Ny)
-    powerVals = np.ones((Nx, Ny)) * Uinf
-    
-    for i in range(agents.shape[0]):
-        rx, ry = agents[i, 0], agents[i, 1]
-        downstream_mask = xVals > rx
-        if not np.any(downstream_mask):
-            continue
-            
-        dx = (xVals - rx)[:, None]
-        wake_width = wind_rad + 0.05 * dx
-        dy = np.abs(yVals - ry)[None, :]
-        
-        inside_wake = (dy < wake_width) & downstream_mask[:, None]
-        attenuation = 1.0 - (0.6 / (1.0 + 0.2 * dx))
-        attenuated_power = Uinf * attenuation
-        
-        powerVals = np.where(inside_wake, np.minimum(powerVals, attenuated_power), powerVals)
-                        
+    dx = xVals[1] - xVals[0]
+    dy = yVals[1] - yVals[0]
+
+    X, Y = np.meshgrid(xVals, yVals)  # Ny x Nx, matches MATLAB's meshgrid(xVals, yVals)
+    distPages = np.hypot(X[:, :, None] - agents[:, 0][None, None, :],
+                          Y[:, :, None] - agents[:, 1][None, None, :])  # Ny x Nx x M
+
+    distMin = np.min(distPages, axis=2)
+    idxMat = np.argmin(distPages, axis=2)
+    inMask = distMin < wind_rad
+
+    P = np.full((Ny, Nx), float(Uinf))
+
+    for i in range(1, Nx):
+        insideNow = inMask[:, i]
+        insidePrev = inMask[:, i - 1]
+        robotNow = idxMat[:, i]
+        robotPrev = idxMat[:, i - 1]
+        Pprev = P[:, i - 1]
+
+        justEntered = insideNow & ~insidePrev
+        P[justEntered, i] = np.maximum(min_power_x, (1 - percent_drop) * Pprev[justEntered])
+
+        staySame = insideNow & insidePrev & (robotNow == robotPrev)
+        P[staySame, i] = Pprev[staySame]
+
+        switchRobot = insideNow & insidePrev & (robotNow != robotPrev)
+        P[switchRobot, i] = np.maximum(min_power_x, (1 - percent_drop) * Pprev[switchRobot])
+
+        justExit = ~insideNow & insidePrev
+        P[justExit, i] = Pprev[justExit]
+
+        stillOut = ~insideNow & ~insidePrev
+        gap = Uinf - Pprev[stillOut]
+        P[stillOut, i] = np.minimum(Uinf, Pprev[stillOut] + gap * recovery_rate * dx)
+
+    Psm = _replicate_smooth(P, _exp_kernel(Nx, Ny, x_smoothing1, y_smoothing1, alpha))
+
+    thr_ok = Uinf - 1.0
+    okMask = Psm >= thr_ok
+
+    rowIdx = np.arange(1, Ny + 1, dtype=float)[:, None]
+    prevZero = np.maximum.accumulate(rowIdx * okMask, axis=0)
+    distUp = (~okMask) * (rowIdx - prevZero)
+
+    okFlip = np.flipud(okMask)
+    nextZero = np.maximum.accumulate(rowIdx * okFlip, axis=0)
+    distDown = (~okMask) * np.flipud(rowIdx - nextZero)
+
+    kernelHalfY = np.minimum(distUp, distDown)
+    wallScale = 2.0 * (np.tanh(3.0 * (2.0 * kernelHalfY * dy / max_wall_span - 1.0)) + 1.0)
+    powerDef = (Psm / 100.0) ** wallScale
+    Psm = np.maximum(min_power_y, Psm * powerDef)
+
+    powerValsSmoothed = _replicate_smooth(Psm, _exp_kernel(Nx, Ny, x_smoothing2, y_smoothing2, beta))
+
+    powerVals = powerValsSmoothed.T  # Nx x Ny, matching the convention dragforce/plot_all expect
     return yVals, xVals, powerVals
 
 def dragforce(agents, wind_rad, xVals, yVals, powerVals, n_agents, vel_actual, v_wind, kappa):
@@ -159,7 +227,8 @@ def plot_all(ax, fig, agents, r, yVals, xVals, powerVals, t, video_writer):
         frame = cv2.resize(frame, (1200, 800))
         
     video_writer.write(frame)
-    plt.pause(0.001)
+    if plt.get_backend().lower() != 'agg':
+        plt.pause(0.001)
 
 def simulation_free_global_mod_2_LJ(rules=None, seed=None, visualize=False):
     if seed is not None:
@@ -170,7 +239,11 @@ def simulation_free_global_mod_2_LJ(rules=None, seed=None, visualize=False):
         
     v_out, fig, ax = None, None, None
     if visualize:
-        plt.switch_backend('TkAgg')
+        try:
+            plt.switch_backend('TkAgg')
+        except ImportError:
+            print("TkAgg backend unavailable (no tkinter/display) -- writing video without a live window.")
+            plt.switch_backend('Agg')
         fourcc = cv2.VideoWriter_fourcc(*'mp4v')
         v_out = cv2.VideoWriter('alone.mp4', fourcc, 10.0, (1200, 800))
         fig, ax = plt.subplots(figsize=(12, 8))

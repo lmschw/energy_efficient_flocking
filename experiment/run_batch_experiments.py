@@ -6,6 +6,7 @@ import cma
 
 # Import the module directly so we can dynamically manipulate its global variables
 import simulation_free_global_mod_2_LJ
+from fitness_plot import FitnessPlotter
 
 # Global tracking variables for the active CMA-ES iteration
 current_candidate = 0
@@ -76,6 +77,7 @@ if __name__ == "__main__":
     }
     total_candidates = production_options['popsize']
     master_summary = []
+    plotter = FitnessPlotter(path="batch_fitness_curve.png")
 
     # Outer Loop: Scale Configurations
     for config_name, agent_count in CONFIGS.items():
@@ -93,23 +95,25 @@ if __name__ == "__main__":
             
             # Initialize a pristine strategy instance for this unique matrix environment sequence
             es = cma.CMAEvolutionStrategy(initial_guess, 0.15, trial_options)
-            
+            plotter.reset_run(title=f"{config_name} | trial {trial_idx:02d}/{NUM_TRIALS} (seed {trial_seed})")
+
             gen = 0
             best_loss_history = []
-            
+
             while not es.stop():
                 gen += 1
-                current_candidate = 0 
-                
+                current_candidate = 0
+
                 solutions = es.ask()
                 fitness_values = [fitness_wrapper(sol) for sol in solutions]
                 es.tell(solutions, fitness_values)
-                
+                plotter.update(gen, fitness_values)
+
                 min_loss = min(fitness_values)
                 best_loss_history.append(float(min_loss))
-                
+
                 sys.stdout.write("\r")
-                print(f"   ↳ Gen {gen:02d}/{trial_options['maxiter']} Complete | Best Loss (Neg Eff): {min_loss:.4f}")
+                print(f"   ↳ Gen {gen:02d}/{trial_options['maxiter']} Complete | Best Loss (Neg Eff): {min_loss:.4f} | batch_fitness_curve.png updated")
             
             # Harvest best genome variables
             best_genome = es.result[0]
@@ -132,6 +136,8 @@ if __name__ == "__main__":
             master_summary.append(trial_summary)
             
             print(f"💾 Trial {trial_idx} Complete. Evolved Swarm Efficiency Score: {-final_best_loss:.4f}")
+
+    plotter.close()
 
     # 3. Save out performance ledger logs
     with open(os.path.join(output_dir, "master_optimization_summary.json"), "w") as f:
