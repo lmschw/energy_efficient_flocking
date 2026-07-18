@@ -1,6 +1,7 @@
 import sys
 import numpy as np
 import cma
+import config
 from simulation_free_global_mod_2_LJ import simulation_free_global_mod_2_LJ
 from fitness_plot import FitnessPlotter
 
@@ -10,42 +11,30 @@ total_candidates = 0
 def fitness_wrapper(genome):
     global current_candidate
     current_candidate += 1
-    
+
     sys.stdout.write(f"\r   ↳ Evaluating Swarm Candidate: {current_candidate}/{total_candidates} ...")
     sys.stdout.flush()
-    
-    rules = {
-        'r0':      genome[0],
-        'epsilon': genome[1],
-        'k_align': genome[2],
-        'k_goal':  genome[3],
-        'K1':      genome[4],
-        'K2':      genome[5],
-        'U':       genome[6]
-    }
-    
+
+    rules = config.genome_to_rules(genome)
+
     try:
-        eff, _, _, _ = simulation_free_global_mod_2_LJ(rules=rules, seed=42, visualize=False)
-        return -eff  
+        eff, _, _, _ = simulation_free_global_mod_2_LJ(rules=rules, seed=config.OPTIMIZE_SEED, visualize=False)
+        return -eff
     except Exception:
-        return 99999.0  
+        return 99999.0
 
 if __name__ == "__main__":
     print("🚀 Launching Pure 1:1 CMA-ES Optimizer...")
-    
-    # Exact original MATLAB baseline values
-    initial_guess = [0.70, 0.5, 0.0, 3.0, 0.05, 0.5, 0.005]
-    
+
+    initial_guess = config.CMAES_INITIAL_GUESS
+
     options = {
-        'popsize': 12,
-        'maxiter': 40,
-        'bounds': [
-            [0.2, 0.01, -1.0, 0.0, 0.001, 0.01, -0.05], 
-            [2.0, 2.0,   1.0, 10.0, 0.5,   2.0,   0.1]   
-        ]
+        'popsize': config.OPTIMIZE_POPSIZE,
+        'maxiter': config.OPTIMIZE_MAXITER,
+        'bounds': config.CMAES_BOUNDS,
     }
-    
-    es = cma.CMAEvolutionStrategy(initial_guess, 0.15, options)
+
+    es = cma.CMAEvolutionStrategy(initial_guess, config.CMAES_SIGMA0, options)
     total_candidates = options['popsize']
     plotter = FitnessPlotter()
 
@@ -65,12 +54,9 @@ if __name__ == "__main__":
 
     plotter.close()
     best_genome = es.result[0]
-    np.save("optimized_gains.npy", best_genome)
-    print("\n💾 Optimization Complete! Parameters exported to 'optimized_gains.npy'.")
-    
-    print("🎬 Rendering optimized playback video ('alone.mp4')...")
-    best_rules = {
-        'r0': best_genome[0], 'epsilon': best_genome[1], 'k_align': best_genome[2],
-        'k_goal': best_genome[3], 'K1': best_genome[4], 'K2': best_genome[5], 'U': best_genome[6]
-    }
-    simulation_free_global_mod_2_LJ(rules=best_rules, seed=42, visualize=True)
+    np.save(config.OPTIMIZE_GENOME_OUT_PATH, best_genome)
+    print(f"\n💾 Optimization Complete! Parameters exported to '{config.OPTIMIZE_GENOME_OUT_PATH}'.")
+
+    print(f"🎬 Rendering optimized playback video ('{config.VIDEO_PATH}')...")
+    best_rules = config.genome_to_rules(best_genome)
+    simulation_free_global_mod_2_LJ(rules=best_rules, seed=config.OPTIMIZE_SEED, visualize=True)
