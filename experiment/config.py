@@ -25,8 +25,9 @@ SPAWN_MIN_DIST_SLACK = 0.1   # extra slack (on top of 2*ROBOT_RAD) enforced betw
 # Battery capacity -- this is what controls how long a simulation runs, since the
 # main loop terminates as soon as any agent's battery reaches 0. Raise these to
 # make simulations (and therefore videos/optimization runs) last longer.
-MAX_BATTERY = 100.0          # starting battery for all agents but one
-MIN_BATTERY = 100.0          # starting battery for the single "weakest" agent
+MAX_BATTERY = 150.0          # starting battery for all agents but one (1.5x the original 100.0,
+                              # for ~1.5x longer runs -- drain rate is roughly constant per step)
+MIN_BATTERY = 150.0          # starting battery for the single "weakest" agent
 
 # --- Collision / walls ---
 COLLISION_MIN_DIST_SLACK = 0.01      # min_dist = COLLISION_MIN_DIST_SLACK + 2*ROBOT_RAD

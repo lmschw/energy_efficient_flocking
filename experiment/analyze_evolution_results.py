@@ -135,9 +135,10 @@ def plot_trajectories_for_stage(stage, rules, agent_counts, out_path, seed=TRAJE
 
     for idx, n_agents in enumerate(agent_counts):
         ax = axes[idx // n_cols][idx % n_cols]
-        _, _, _, _, positions = simulation_free_global_mod_2_LJ(
+        _, _, _, _, telemetry = simulation_free_global_mod_2_LJ(
             rules=rules, seed=seed, visualize=False, n_agents=n_agents, record_trajectory=True
         )
+        positions = telemetry["positions"]
         for a in range(n_agents):
             ax.plot(positions[:, a, 0], positions[:, a, 1], linewidth=1)
             ax.scatter(positions[0, a, 0], positions[0, a, 1], color="green", s=15, zorder=3)

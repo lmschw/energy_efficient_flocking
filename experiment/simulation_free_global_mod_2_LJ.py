@@ -341,7 +341,7 @@ def _open_video_writer(visualize):
     fig, ax = plt.subplots(figsize=config.VIDEO_FIGSIZE)
     return v_out, fig, ax
 
-def _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory):
+def _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory, record_battery):
     if seed is not None:
         np.random.seed(seed)
 
@@ -374,6 +374,7 @@ def _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory):
     heading_sum = 0.0
     step_counter = 0
     positions_log = [agents[:, 0:2].copy()] if record_trajectory else None
+    battery_log = [agents[:, 3].copy()] if record_battery else None
 
     yVals, xVals, powerVals = RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny)
     if visualize:
@@ -395,6 +396,8 @@ def _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory):
         yVals, xVals, powerVals = RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny)
         F_drag = dragforce(agents, wind_rad, xVals, yVals, powerVals, n_agents, vel_actual, v_wind, kappa)
         agents, batt_drain = batterydrainage(agents, vel_actual, F_drag, robot_rad, dt)
+        if record_battery:
+            battery_log.append(agents[:, 3].copy())
 
         batteryEmpty = np.any(agents[:, 3] <= 0.0)
         t += dt
@@ -410,8 +413,12 @@ def _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory):
         v_out.release()
         plt.close()
 
-    if record_trajectory:
-        return eff, dist_travelled, average_batt, collision_counter, np.array(positions_log)
+    if record_trajectory or record_battery:
+        telemetry = {
+            "positions": np.array(positions_log) if record_trajectory else None,
+            "battery": np.array(battery_log) if record_battery else None,
+        }
+        return eff, dist_travelled, average_batt, collision_counter, telemetry
     return eff, dist_travelled, average_batt, collision_counter
 
 def _pybullet_wall_specs(yRange, robot_rad):
@@ -534,7 +541,7 @@ def _pybullet_render_frame(p, body_ids, agents, t, video_writer):
     cv2.putText(frame_bgr, f"t = {t:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
     video_writer.write(frame_bgr)
 
-def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory):
+def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory, record_battery):
     try:
         import pybullet as p
     except ModuleNotFoundError as exc:
@@ -604,6 +611,7 @@ def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory):
         heading_sum = 0.0
         step_counter = 0
         positions_log = [agents[:, 0:2].copy()] if record_trajectory else None
+        battery_log = [agents[:, 3].copy()] if record_battery else None
 
         yVals, xVals, powerVals = RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny)
         if visualize:
@@ -626,6 +634,8 @@ def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory):
             yVals, xVals, powerVals = RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny)
             F_drag = dragforce(agents, wind_rad, xVals, yVals, powerVals, n_agents, vel_actual, v_wind, kappa)
             agents, batt_drain = batterydrainage(agents, vel_actual, F_drag, robot_rad, dt)
+            if record_battery:
+                battery_log.append(agents[:, 3].copy())
 
             batteryEmpty = np.any(agents[:, 3] <= 0.0)
             t += dt
@@ -642,20 +652,28 @@ def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory):
     if visualize:
         v_out.release()
 
-    if record_trajectory:
-        return eff, dist_travelled, average_batt, collision_counter, np.array(positions_log)
+    if record_trajectory or record_battery:
+        telemetry = {
+            "positions": np.array(positions_log) if record_trajectory else None,
+            "battery": np.array(battery_log) if record_battery else None,
+        }
+        return eff, dist_travelled, average_batt, collision_counter, telemetry
     return eff, dist_travelled, average_batt, collision_counter
 
 def simulation_free_global_mod_2_LJ(rules=None, seed=None, visualize=False, n_agents=None,
-                                     record_trajectory=False, backend="numpy"):
+                                     record_trajectory=False, record_battery=False, backend="numpy"):
     """backend: "numpy" (default) -- the original kinematic port, faithful to the MATLAB
     reference. "pybullet" -- agents are real rigid bodies (mass/friction/collision) driven
     by a force/torque controller chasing the same (u, w) control law; see the PYBULLET_*
     constants in config.py. The two backends are not expected to produce matching numbers --
-    gains evolved against one will likely need re-tuning against the other."""
+    gains evolved against one will likely need re-tuning against the other.
+
+    record_trajectory / record_battery: if either is True, a 5th return value is added --
+    a dict {"positions": (n_steps, n_agents, 2) array or None, "battery": (n_steps, n_agents)
+    array or None} -- instead of the usual 4-tuple."""
     if backend == "numpy":
-        return _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory)
+        return _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory, record_battery)
     elif backend == "pybullet":
-        return _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory)
+        return _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory, record_battery)
     else:
         raise ValueError(f"Unknown backend '{backend}' -- expected 'numpy' or 'pybullet'.")
