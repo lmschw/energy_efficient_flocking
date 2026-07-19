@@ -476,6 +476,64 @@ def _pybullet_move(p, body_ids, agents, vel_cmd, n_agents, min_dist, walls, coll
 
     return vel_actual, agents, xRange, collision_counter
 
+def _open_pybullet_video_writer(visualize):
+    """cv2-only counterpart to _open_video_writer(): PyBullet frames are rendered by
+    PyBullet's own rasterizer, not matplotlib, so no figure/backend juggling is needed."""
+    if not visualize:
+        return None
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    return cv2.VideoWriter(config.PYBULLET_VIDEO_PATH, fourcc, config.VIDEO_FPS, config.VIDEO_SIZE)
+
+def _pybullet_camera_matrices(p, com_x, com_y, width, height):
+    distance = config.VIDEO_VIEWPORT_HALF_WIDTH * config.PYBULLET_VIDEO_DISTANCE_FACTOR
+    view = p.computeViewMatrixFromYawPitchRoll(
+        cameraTargetPosition=[com_x, com_y, 0.0], distance=distance,
+        yaw=config.PYBULLET_VIDEO_YAW, pitch=config.PYBULLET_VIDEO_PITCH, roll=0.0, upAxisIndex=2)
+    proj = p.computeProjectionMatrixFOV(
+        fov=config.PYBULLET_VIDEO_FOV, aspect=width / height, nearVal=0.1, farVal=distance * 3.0)
+    return view, proj
+
+def _world_to_screen(view, proj, width, height, x, y, z=0.0):
+    """Project a world-space point through PyBullet's (OpenGL-style, column-major) view
+    and projection matrices to pixel coordinates, for drawing heading arrows on the frame."""
+    view_m = np.array(view, dtype=np.float64).reshape(4, 4, order='F')
+    proj_m = np.array(proj, dtype=np.float64).reshape(4, 4, order='F')
+    clip = proj_m @ (view_m @ np.array([x, y, z, 1.0]))
+    if clip[3] <= 1e-9:
+        return None
+    ndc = clip[:3] / clip[3]
+    sx = (ndc[0] * 0.5 + 0.5) * width
+    sy = (1.0 - (ndc[1] * 0.5 + 0.5)) * height
+    return sx, sy
+
+def _pybullet_render_frame(p, body_ids, agents, t, video_writer):
+    width, height = config.VIDEO_SIZE
+    com_x, com_y = np.mean(agents[:, 0]), np.mean(agents[:, 1])
+    view, proj = _pybullet_camera_matrices(p, com_x, com_y, width, height)
+
+    for i, body_id in enumerate(body_ids):
+        norm_b = np.clip(agents[i, 3] / config.MAX_BATTERY, 0.0, 1.0)
+        p.changeVisualShape(body_id, -1, rgbaColor=[1.0 - norm_b, norm_b, 0.0, 1.0])
+
+    _, _, rgba, _, _ = p.getCameraImage(width, height, viewMatrix=view, projectionMatrix=proj,
+                                         renderer=p.ER_TINY_RENDERER)
+    frame = np.reshape(np.array(rgba, dtype=np.uint8), (height, width, 4))[:, :, :3]
+    frame_bgr = np.ascontiguousarray(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+
+    arrow_len = config.VIDEO_ARROW_LEN
+    for i in range(agents.shape[0]):
+        theta = agents[i, 2]
+        p0 = _world_to_screen(view, proj, width, height, agents[i, 0], agents[i, 1])
+        p1 = _world_to_screen(view, proj, width, height,
+                               agents[i, 0] - arrow_len * np.sin(theta),
+                               agents[i, 1] + arrow_len * np.cos(theta))
+        if p0 is not None and p1 is not None:
+            cv2.arrowedLine(frame_bgr, (int(p0[0]), int(p0[1])), (int(p1[0]), int(p1[1])),
+                             (0, 0, 255), 2, tipLength=0.3)
+
+    cv2.putText(frame_bgr, f"t = {t:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+    video_writer.write(frame_bgr)
+
 def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory):
     try:
         import pybullet as p
@@ -487,7 +545,7 @@ def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory):
     if seed is not None:
         np.random.seed(seed)
 
-    v_out, fig, ax = _open_video_writer(visualize)
+    v_out = _open_pybullet_video_writer(visualize)
 
     dt = config.DT
     n_agents = n_agents if n_agents is not None else config.N_AGENTS
@@ -549,7 +607,7 @@ def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory):
 
         yVals, xVals, powerVals = RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny)
         if visualize:
-            plot_all(ax, fig, agents, robot_rad, yVals, xVals, powerVals, t, v_out)
+            _pybullet_render_frame(p, body_ids, agents, t, v_out)
 
         r0, epsilon, k_align, k_goal, K1, K2, U = _resolve_rules(rules)
         r_cut, r_min, R_align = config.R_CUT, config.R_MIN, config.R_ALIGN
@@ -572,7 +630,7 @@ def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory):
             batteryEmpty = np.any(agents[:, 3] <= 0.0)
             t += dt
             if visualize:
-                plot_all(ax, fig, agents, robot_rad, yVals, xVals, powerVals, t, v_out)
+                _pybullet_render_frame(p, body_ids, agents, t, v_out)
 
         average_batt = np.mean(agents[:, 3])
         dist_travelled = -np.mean(agents[:, 0])
@@ -583,7 +641,6 @@ def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory):
 
     if visualize:
         v_out.release()
-        plt.close()
 
     if record_trajectory:
         return eff, dist_travelled, average_batt, collision_counter, np.array(positions_log)

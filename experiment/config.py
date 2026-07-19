@@ -98,6 +98,16 @@ VIDEO_VIEWPORT_HALF_WIDTH = 5.0   # camera half-width/height around the swarm's 
 VIDEO_ARROW_LEN = 0.3             # heading-arrow length in the rendered frame [m]
 VIDEO_QUIVER_WIDTH = 0.004        # heading-arrow line width
 
+# --- PyBullet-rendered video (backend="pybullet", visualize=True) ---
+# Rendered from PyBullet's own camera/rasterizer instead of the matplotlib wind-field
+# view, so it actually shows the rigid-body dynamics (sliding, bouncing, real collisions).
+PYBULLET_VIDEO_PATH = "alone_pybullet.mp4"
+PYBULLET_VIDEO_FOV = 45.0                # camera field of view [deg]
+PYBULLET_VIDEO_PITCH = -89.9             # camera pitch [deg]; ~straight down, comparable to the
+                                          # numpy backend's top-down matplotlib view
+PYBULLET_VIDEO_YAW = 0.0                 # camera yaw [deg]
+PYBULLET_VIDEO_DISTANCE_FACTOR = 2.2     # camera distance = VIDEO_VIEWPORT_HALF_WIDTH * this
+
 # --- Fitness function weighting (eff = dist_travelled + avg_batt/W1 - collision_time/W2) ---
 EFF_BATTERY_WEIGHT = 5.0
 EFF_COLLISION_WEIGHT = 250.0

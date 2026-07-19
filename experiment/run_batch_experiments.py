@@ -1,3 +1,4 @@
+import argparse
 import sys
 import os
 import json
@@ -14,6 +15,7 @@ current_candidate = 0
 total_candidates = 0
 active_n_agents = config.N_AGENTS
 active_trial_seed = config.OPTIMIZE_SEED
+active_backend = "numpy"
 
 def fitness_wrapper(genome):
     global current_candidate
@@ -25,25 +27,34 @@ def fitness_wrapper(genome):
     rules = config.genome_to_rules(genome)
 
     try:
-        # Override the global n_agents variable inside your simulation module dynamically
-        simulation_free_global_mod_2_LJ.n_agents = active_n_agents
-
-        # Execute the simulation using the active trial seed
+        # Execute the simulation using the active trial seed and agent count
         eff, _, _, _ = simulation_free_global_mod_2_LJ.simulation_free_global_mod_2_LJ(
             rules=rules,
             seed=active_trial_seed,
-            visualize=False
+            visualize=False,
+            backend=active_backend,
+            n_agents=active_n_agents
         )
         return -eff  # Negating because CMA-ES minimizes objectives
+    except ModuleNotFoundError:
+        raise  # environment/setup problem (e.g. missing pybullet), not a bad genome -- don't hide it
     except Exception as e:
-        # Return a safe fallback penalty if an extreme genome causes physics/NaN instabilities
+        # Penalize a genome that causes physics/NaN instabilities, but say so instead of hiding it
+        print(f"\n⚠️  Candidate {current_candidate} failed ({type(e).__name__}: {e}) -- penalizing with 99999.0")
         return 99999.0
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Batch CMA-ES optimization across scale configs and seeds.")
+    parser.add_argument("--backend", choices=["numpy", "pybullet"], default="numpy",
+                         help="Physics backend: 'numpy' (kinematic, matches MATLAB) or "
+                              "'pybullet' (real rigid-body dynamics).")
+    args = parser.parse_args()
+    active_backend = args.backend
+
     print("=====================================================================")
-    print("🚀 LAUNCHING PRODUCTION MULTI-SCALE & MULTI-SEED BATCH CMA-ES")
+    print(f"🚀 LAUNCHING PRODUCTION MULTI-SCALE & MULTI-SEED BATCH CMA-ES [backend={active_backend}]")
     print("=====================================================================")
-    
+
     # 1. Scale configurations based on agent counts
     CONFIGS = config.BATCH_CONFIGS
 
@@ -51,8 +62,12 @@ if __name__ == "__main__":
     MASTER_SEEDS = config.BATCH_MASTER_SEEDS
     NUM_TRIALS = len(MASTER_SEEDS)
 
-    output_dir = config.BATCH_OUTPUT_DIR
+    # Namespace outputs by backend so a pybullet run never overwrites/mixes with numpy results
+    backend_suffix = "" if active_backend == "numpy" else f"_{active_backend}"
+    output_dir = config.BATCH_OUTPUT_DIR + backend_suffix
     os.makedirs(output_dir, exist_ok=True)
+    fitness_plot_base, fitness_plot_ext = os.path.splitext(config.BATCH_FITNESS_PLOT_PATH)
+    fitness_plot_path = f"{fitness_plot_base}{backend_suffix}{fitness_plot_ext}"
 
     # Publication-grade CMA-ES Settings
     initial_guess = config.CMAES_INITIAL_GUESS
@@ -63,7 +78,7 @@ if __name__ == "__main__":
     }
     total_candidates = production_options['popsize']
     master_summary = []
-    plotter = FitnessPlotter(path=config.BATCH_FITNESS_PLOT_PATH)
+    plotter = FitnessPlotter(path=fitness_plot_path)
 
     # Outer Loop: Scale Configurations
     for config_name, agent_count in CONFIGS.items():
@@ -99,7 +114,7 @@ if __name__ == "__main__":
                 best_loss_history.append(float(min_loss))
 
                 sys.stdout.write("\r")
-                print(f"   ↳ Gen {gen:02d}/{trial_options['maxiter']} Complete | Best Loss (Neg Eff): {min_loss:.4f} | batch_fitness_curve.png updated")
+                print(f"   ↳ Gen {gen:02d}/{trial_options['maxiter']} Complete | Best Loss (Neg Eff): {min_loss:.4f} | {fitness_plot_path} updated")
             
             # Harvest best genome variables
             best_genome = es.result[0]

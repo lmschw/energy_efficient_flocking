@@ -27,12 +27,13 @@ def run_live_visualization(genome_path=config.OPTIMIZE_GENOME_OUT_PATH, seed=con
     print(f"Playback complete -- efficiency={eff:.4f}, "
           f"distance={dist_travelled:.4f}, avg_battery={average_batt:.4f}, "
           f"collisions={collisions}")
-    print(f"Video saved to '{config.VIDEO_PATH}'.")
+    video_path = config.PYBULLET_VIDEO_PATH if backend == "pybullet" else config.VIDEO_PATH
+    print(f"Video saved to '{video_path}'.")
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Play back a swarm run for a saved genome.")
-    parser.add_argument("genome_path", nargs="?", default="optimization_results/opt_small_scale_trial_03_seed_777_gains.npy",
+    parser.add_argument("genome_path", nargs="?", default="optimization_results_pybullet/opt_baseline_trial_01_seed_42_gains.npy",
                          help="Path to a .npy file with the 7 LJ rule gains "
                               "(r0, epsilon, k_align, k_goal, K1, K2, U).")
     parser.add_argument("--seed", type=int, default=config.OPTIMIZE_SEED, help="Random seed for the run.")
