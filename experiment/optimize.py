@@ -9,6 +9,7 @@ from fitness_plot import FitnessPlotter
 current_candidate = 0
 total_candidates = 0
 active_backend = "numpy"
+active_battery_aware = True
 
 def fitness_wrapper(genome):
     global current_candidate
@@ -21,7 +22,8 @@ def fitness_wrapper(genome):
 
     try:
         eff, _, _, _ = simulation_free_global_mod_2_LJ(rules=rules, seed=config.OPTIMIZE_SEED,
-                                                        visualize=False, backend=active_backend)
+                                                        visualize=False, backend=active_backend,
+                                                        battery_aware=active_battery_aware)
         return -eff
     except ModuleNotFoundError:
         raise  # environment/setup problem (e.g. missing pybullet), not a bad genome -- don't hide it
@@ -34,10 +36,18 @@ if __name__ == "__main__":
     parser.add_argument("--backend", choices=["numpy", "pybullet"], default="numpy",
                          help="Physics backend: 'numpy' (kinematic, matches MATLAB) or "
                               "'pybullet' (real rigid-body dynamics).")
+    parser.add_argument("--no-battery-objective", action="store_true",
+                         help="Evolve against distance/collisions only, dropping the battery term "
+                              "from the fitness function entirely. Produces a baseline genome to "
+                              "compare against the normal battery-aware one (e.g. with "
+                              "visualize_best.py --plot-battery), to check the battery term is "
+                              "actually doing something.")
     args = parser.parse_args()
     active_backend = args.backend
+    active_battery_aware = not args.no_battery_objective
 
-    print(f"🚀 Launching Pure 1:1 CMA-ES Optimizer... [backend={active_backend}]")
+    print(f"🚀 Launching Pure 1:1 CMA-ES Optimizer... [backend={active_backend}, "
+          f"battery_aware={active_battery_aware}]")
 
     initial_guess = config.CMAES_INITIAL_GUESS
 
@@ -50,10 +60,11 @@ if __name__ == "__main__":
     es = cma.CMAEvolutionStrategy(initial_guess, config.CMAES_SIGMA0, options)
     total_candidates = options['popsize']
 
-    # Namespace outputs by backend so a pybullet run never overwrites numpy results
-    backend_suffix = "" if active_backend == "numpy" else f"_{active_backend}"
-    genome_out_path = config.OPTIMIZE_GENOME_OUT_PATH.replace(".npy", f"{backend_suffix}.npy")
-    fitness_plot_path = "fitness_curve" + backend_suffix + ".png"
+    # Namespace outputs by backend/objective so different runs never overwrite each other
+    suffix = ("" if active_backend == "numpy" else f"_{active_backend}") + \
+             ("" if active_battery_aware else "_nobattery")
+    genome_out_path = config.OPTIMIZE_GENOME_OUT_PATH.replace(".npy", f"{suffix}.npy")
+    fitness_plot_path = f"fitness_curve{suffix}.png"
     plotter = FitnessPlotter(path=fitness_plot_path)
 
     gen = 0

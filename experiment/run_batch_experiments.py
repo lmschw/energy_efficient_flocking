@@ -16,6 +16,7 @@ total_candidates = 0
 active_n_agents = config.N_AGENTS
 active_trial_seed = config.OPTIMIZE_SEED
 active_backend = "numpy"
+active_battery_aware = True
 
 def fitness_wrapper(genome):
     global current_candidate
@@ -33,7 +34,8 @@ def fitness_wrapper(genome):
             seed=active_trial_seed,
             visualize=False,
             backend=active_backend,
-            n_agents=active_n_agents
+            n_agents=active_n_agents,
+            battery_aware=active_battery_aware
         )
         return -eff  # Negating because CMA-ES minimizes objectives
     except ModuleNotFoundError:
@@ -48,11 +50,18 @@ if __name__ == "__main__":
     parser.add_argument("--backend", choices=["numpy", "pybullet"], default="numpy",
                          help="Physics backend: 'numpy' (kinematic, matches MATLAB) or "
                               "'pybullet' (real rigid-body dynamics).")
+    parser.add_argument("--no-battery-objective", action="store_true",
+                         help="Evolve against distance/collisions only, dropping the battery term "
+                              "from the fitness function entirely. Produces a baseline batch to "
+                              "compare against the normal battery-aware results, to check the "
+                              "battery term is actually doing something.")
     args = parser.parse_args()
     active_backend = args.backend
+    active_battery_aware = not args.no_battery_objective
 
     print("=====================================================================")
-    print(f"🚀 LAUNCHING PRODUCTION MULTI-SCALE & MULTI-SEED BATCH CMA-ES [backend={active_backend}]")
+    print(f"🚀 LAUNCHING PRODUCTION MULTI-SCALE & MULTI-SEED BATCH CMA-ES "
+          f"[backend={active_backend}, battery_aware={active_battery_aware}]")
     print("=====================================================================")
 
     # 1. Scale configurations based on agent counts
@@ -62,12 +71,13 @@ if __name__ == "__main__":
     MASTER_SEEDS = config.BATCH_MASTER_SEEDS
     NUM_TRIALS = len(MASTER_SEEDS)
 
-    # Namespace outputs by backend so a pybullet run never overwrites/mixes with numpy results
-    backend_suffix = "" if active_backend == "numpy" else f"_{active_backend}"
-    output_dir = config.BATCH_OUTPUT_DIR + backend_suffix
+    # Namespace outputs by backend/objective so different runs never overwrite/mix results
+    suffix = ("" if active_backend == "numpy" else f"_{active_backend}") + \
+             ("" if active_battery_aware else "_nobattery")
+    output_dir = config.BATCH_OUTPUT_DIR + suffix
     os.makedirs(output_dir, exist_ok=True)
     fitness_plot_base, fitness_plot_ext = os.path.splitext(config.BATCH_FITNESS_PLOT_PATH)
-    fitness_plot_path = f"{fitness_plot_base}{backend_suffix}{fitness_plot_ext}"
+    fitness_plot_path = f"{fitness_plot_base}{suffix}{fitness_plot_ext}"
 
     # Publication-grade CMA-ES Settings
     initial_guess = config.CMAES_INITIAL_GUESS
@@ -129,6 +139,8 @@ if __name__ == "__main__":
                 "agents": agent_count,
                 "trial": trial_idx,
                 "seed": trial_seed,
+                "backend": active_backend,
+                "battery_aware": active_battery_aware,
                 "best_loss": final_best_loss,
                 "best_efficiency": -final_best_loss,
                 "genome": best_genome.tolist(),

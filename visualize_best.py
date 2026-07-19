@@ -43,7 +43,7 @@ def run_live_visualization(genome_path=config.OPTIMIZE_GENOME_OUT_PATH, seed=con
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Play back a swarm run for a saved genome.")
-    parser.add_argument("genome_path", nargs="?", default="optimization_results_pybullet/opt_baseline_trial_01_seed_42_gains.npy",
+    parser.add_argument("genome_path", nargs="?", default="optimization_results_pybullet/opt_small_scale_trial_02_seed_123_gains.npy",
                          help="Path to a .npy file with the 7 LJ rule gains "
                               "(r0, epsilon, k_align, k_goal, K1, K2, U).")
     parser.add_argument("--seed", type=int, default=config.OPTIMIZE_SEED, help="Random seed for the run.")

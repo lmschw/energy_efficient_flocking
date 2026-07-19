@@ -341,7 +341,12 @@ def _open_video_writer(visualize):
     fig, ax = plt.subplots(figsize=config.VIDEO_FIGSIZE)
     return v_out, fig, ax
 
-def _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory, record_battery):
+def _fitness(dist_travelled, average_batt, collision_time, battery_aware):
+    if battery_aware:
+        return dist_travelled + average_batt / config.EFF_BATTERY_WEIGHT - collision_time / config.EFF_COLLISION_WEIGHT
+    return dist_travelled - collision_time / config.EFF_COLLISION_WEIGHT
+
+def _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory, record_battery, battery_aware):
     if seed is not None:
         np.random.seed(seed)
 
@@ -407,7 +412,7 @@ def _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory, record_
     average_batt = np.mean(agents[:, 3])
     dist_travelled = -np.mean(agents[:, 0])
     collision_time = collision_counter * dt
-    eff = dist_travelled + average_batt / config.EFF_BATTERY_WEIGHT - collision_time / config.EFF_COLLISION_WEIGHT
+    eff = _fitness(dist_travelled, average_batt, collision_time, battery_aware)
 
     if visualize:
         v_out.release()
@@ -541,7 +546,7 @@ def _pybullet_render_frame(p, body_ids, agents, t, video_writer):
     cv2.putText(frame_bgr, f"t = {t:.1f}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
     video_writer.write(frame_bgr)
 
-def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory, record_battery):
+def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory, record_battery, battery_aware):
     try:
         import pybullet as p
     except ModuleNotFoundError as exc:
@@ -645,7 +650,7 @@ def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory, reco
         average_batt = np.mean(agents[:, 3])
         dist_travelled = -np.mean(agents[:, 0])
         collision_time = collision_counter * dt
-        eff = dist_travelled + average_batt / config.EFF_BATTERY_WEIGHT - collision_time / config.EFF_COLLISION_WEIGHT
+        eff = _fitness(dist_travelled, average_batt, collision_time, battery_aware)
     finally:
         p.disconnect(physicsClientId=client)
 
@@ -661,7 +666,8 @@ def _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory, reco
     return eff, dist_travelled, average_batt, collision_counter
 
 def simulation_free_global_mod_2_LJ(rules=None, seed=None, visualize=False, n_agents=None,
-                                     record_trajectory=False, record_battery=False, backend="numpy"):
+                                     record_trajectory=False, record_battery=False, backend="numpy",
+                                     battery_aware=True):
     """backend: "numpy" (default) -- the original kinematic port, faithful to the MATLAB
     reference. "pybullet" -- agents are real rigid bodies (mass/friction/collision) driven
     by a force/torque controller chasing the same (u, w) control law; see the PYBULLET_*
@@ -670,10 +676,16 @@ def simulation_free_global_mod_2_LJ(rules=None, seed=None, visualize=False, n_ag
 
     record_trajectory / record_battery: if either is True, a 5th return value is added --
     a dict {"positions": (n_steps, n_agents, 2) array or None, "battery": (n_steps, n_agents)
-    array or None} -- instead of the usual 4-tuple."""
+    array or None} -- instead of the usual 4-tuple.
+
+    battery_aware: if False, the returned `eff` (and therefore whatever a CMA-ES run
+    optimizes against) drops the average_batt/EFF_BATTERY_WEIGHT term entirely -- useful
+    for evolving a "doesn't care about battery" baseline to compare against. dist_travelled/
+    average_batt/collision_counter are always computed the same way regardless; only the
+    scalar fitness formula changes."""
     if backend == "numpy":
-        return _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory, record_battery)
+        return _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory, record_battery, battery_aware)
     elif backend == "pybullet":
-        return _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory, record_battery)
+        return _simulate_pybullet(rules, seed, visualize, n_agents, record_trajectory, record_battery, battery_aware)
     else:
         raise ValueError(f"Unknown backend '{backend}' -- expected 'numpy' or 'pybullet'.")
