@@ -51,10 +51,12 @@ if __name__ == "__main__":
                          help="Physics backend: 'numpy' (kinematic, matches MATLAB) or "
                               "'pybullet' (real rigid-body dynamics).")
     parser.add_argument("--n-agents", type=int, default=None, help="Override the number of agents.")
-    parser.add_argument("--plot-battery", nargs="?", const="battery_levels.png", default=None,
-                         metavar="PATH",
-                         help="Also save a per-agent battery-vs-time plot (default: battery_levels.png).")
+    parser.add_argument("--plot-battery", action="store_true",
+                         help="Also save a per-agent battery-vs-time plot.")
+    parser.add_argument("--battery-plot-path", default="battery_levels.png", metavar="PATH",
+                         help="Where to save the battery plot (only used with --plot-battery). "
+                              "Default: battery_levels.png")
     args = parser.parse_args()
 
     run_live_visualization(args.genome_path, args.seed, backend=args.backend, n_agents=args.n_agents,
-                            battery_plot_path=args.plot_battery)
+                            battery_plot_path=args.battery_plot_path if args.plot_battery else None)
