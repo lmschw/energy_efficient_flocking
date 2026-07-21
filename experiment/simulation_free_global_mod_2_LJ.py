@@ -104,15 +104,17 @@ def RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny, useGP
     powerVals = powerValsSmoothed.T  # Nx x Ny, matching the convention dragforce/plot_all expect
     return yVals, xVals, powerVals
 
-def dragforce(agents, wind_rad, xVals, yVals, powerVals, n_agents, vel_actual, v_wind, kappa):
+def agent_wind_percentage(agents, wind_rad, xVals, yVals, powerVals, n_agents):
+    """Each agent's experienced wind-speed percentage (U% in the paper) -- the same
+    downstream-grid-cell lookup dragforce() uses internally, factored out so analysis
+    code (e.g. the battery-awareness wind-exposure experiment) can read it directly
+    without duplicating the lookup."""
     powerVs = powerVals.T
     powerVals_agents = 100.0 * np.ones(n_agents)
-    F_drag = np.zeros((n_agents, 2))
-    
     for i in range(n_agents):
         x_r = agents[i, 0]
         y_r = agents[i, 1]
-        
+
         x_to_left = np.where(xVals <= x_r - config.DRAG_UPSTREAM_LOOKAHEAD_FACTOR * wind_rad)[0]
         if len(x_to_left) > 0:
             x = x_to_left[-1]
@@ -124,12 +126,18 @@ def dragforce(agents, wind_rad, xVals, yVals, powerVals, n_agents, vel_actual, v
         else:
             y = np.argmin(np.abs(yVals - y_r))
             powerVals_agents[i] = powerVs[y, x]
+    return powerVals_agents
 
+def dragforce(agents, wind_rad, xVals, yVals, powerVals, n_agents, vel_actual, v_wind, kappa):
+    powerVals_agents = agent_wind_percentage(agents, wind_rad, xVals, yVals, powerVals, n_agents)
+    F_drag = np.zeros((n_agents, 2))
+
+    for i in range(n_agents):
         v_wind_agent = (powerVals_agents[i] / 100.0) * v_wind
         v_parallel = vel_actual[i, 0] * np.sin(vel_actual[i, 2])
         v_rel = v_wind_agent + v_parallel
         F_drag[i, 0] = 0.5 * config.DRAG_AIR_DENSITY * config.DRAG_COEFFICIENT_AREA * kappa * (v_rel ** 2)
-        
+
     return F_drag
 
 def batterydrainage(agents, vel_actual, F_drag, robot_rad, dt):
@@ -342,9 +350,10 @@ def _open_video_writer(visualize):
     return v_out, fig, ax
 
 def _fitness(dist_travelled, average_batt, collision_time, battery_aware):
+    base = config.EFF_DISTANCE_WEIGHT * dist_travelled - collision_time / config.EFF_COLLISION_WEIGHT
     if battery_aware:
-        return dist_travelled + average_batt / config.EFF_BATTERY_WEIGHT - collision_time / config.EFF_COLLISION_WEIGHT
-    return dist_travelled - collision_time / config.EFF_COLLISION_WEIGHT
+        return base + average_batt / config.EFF_BATTERY_WEIGHT
+    return base
 
 def _simulate_numpy(rules, seed, visualize, n_agents, record_trajectory, record_battery, battery_aware):
     if seed is not None:
