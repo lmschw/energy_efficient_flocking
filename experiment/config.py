@@ -324,3 +324,16 @@ HEBBIAN_STAGE_FITNESS_WEIGHTS = {
     "save_battery_avoid_wall":   (5.0,         500.0,        3.0,            False),
     "save_battery_avoid_all":    (5.0,         250.0,        3.0,            True),
 }
+
+# Explicit distance weight, mirroring EFF_DISTANCE_WEIGHT's role for the LJ model --
+# Table 2's literal formula has no such multiplier (dist_travelled has an implicit
+# weight of 1.0), which measurably let CMA-ES discover that barely moving is a cheap way
+# to preserve battery: real training data showed dist_travelled collapsing from 84.0
+# (stage 1, no battery term) to ~1.5-1.6 (stages 2/3), with avg_batt/battery_w (up to
+# 100/5=20) making up 90%+ of the reported "efficiency" -- the identical failure mode the
+# LJ model's own EFF_DISTANCE_WEIGHT was introduced to fix. Started at the LJ model's own
+# calibrated value (8.0) as a reasoned starting point, not independently re-derived; this
+# is a deliberate, disclosed deviation from Table 2's literal formula, not a literal
+# replication -- document it in the paper the same way the LJ model's weighting choice
+# is documented here.
+HEBBIAN_EFF_DISTANCE_WEIGHT = 8.0

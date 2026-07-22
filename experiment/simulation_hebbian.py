@@ -344,11 +344,17 @@ def render_hebbian_episode_video(abcd_rules, seed=None, n_agents=None, wind_enab
 
 
 def stage_fitness(dist_travelled, average_batt, collision_time, wall_collision_time, stage):
-    """Table 2's per-stage fitness formula:
-    eff = dist + avg_batt/battery_w - (wall_col_mult*wall_col_time [+ collision_time]) / collision_w
+    """Table 2's per-stage fitness formula, extended with an explicit distance weight
+    (config.HEBBIAN_EFF_DISTANCE_WEIGHT) so distance-travelled dominates battery
+    preservation -- mirroring the LJ model's own EFF_DISTANCE_WEIGHT fix for the
+    identical failure mode. Table 2's literal formula has no such multiplier; see that
+    constant's comment for why this is a deliberate, disclosed deviation.
+
+    eff = HEBBIAN_EFF_DISTANCE_WEIGHT*dist + avg_batt/battery_w
+          - (wall_col_mult*wall_col_time [+ collision_time]) / collision_w
     """
     battery_w, collision_w, wall_col_mult, include_inter_robot = config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage]
-    eff = dist_travelled
+    eff = config.HEBBIAN_EFF_DISTANCE_WEIGHT * dist_travelled
     if battery_w is not None:
         eff += average_batt / battery_w
     if collision_w is not None:

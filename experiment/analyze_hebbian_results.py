@@ -10,12 +10,16 @@
      at 1 and 5 agents, to see whether formation-reconfiguration manoeuvres appear
      only in a group (paper's argument that these are collective, not individual,
      behaviours).
+  4. Trajectory repeats -- not from the paper: the same controller/n_agents run several
+     times (different seeds), plotted side by side, as a sanity check for whether the
+     learned behavior is consistent run to run or fragile/seed-dependent.
 
 Usage:
     python analyze_hebbian_results.py --results-dir hebbian_results
     python analyze_hebbian_results.py --results-dir hebbian_results --n-sims 20   # faster look
 """
 import argparse
+import math
 import os
 import sys
 
@@ -160,6 +164,45 @@ def run_trajectory_comparison(controllers, agent_counts, seed, out_path):
     print(f"Saved {out_path}")
 
 
+# --- 4) Trajectory repeats: same controller/n_agents, several seeds, sanity check ---
+def run_trajectory_repeats(rules, n_agents, wind_enabled, n_repeats, seed_start, out_path):
+    """Runs the SAME controller and n_agents n_repeats times, each with a different
+    seed (different spawn positions), plotting every run side by side. Unlike
+    run_trajectory_comparison() (which varies controller/agent-count to compare
+    conditions), this holds everything fixed except the random seed -- a sanity check
+    for whether the learned behavior is consistent run to run or fragile/seed-dependent,
+    which a single trajectory plot can't tell you."""
+    n_cols = min(5, n_repeats)
+    n_rows = math.ceil(n_repeats / n_cols)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(5 * n_cols, 5 * n_rows), squeeze=False)
+
+    for i in range(n_repeats):
+        seed = seed_start + i
+        ax = axes[i // n_cols][i % n_cols]
+        _, _, _, _, tele = simulate_hebbian_episode(
+            rules, seed=seed, n_agents=n_agents, wind_enabled=wind_enabled, record_trajectory=True)
+        positions = tele["positions"]
+        for a in range(n_agents):
+            ax.plot(positions[:, a, 0], positions[:, a, 1], linewidth=1)
+            ax.scatter(positions[0, a, 0], positions[0, a, 1], color="green", s=15, zorder=3)
+            ax.scatter(positions[-1, a, 0], positions[-1, a, 1], color="red", s=15, zorder=3)
+        ax.set_title(f"seed={seed} ({positions.shape[0]} steps)")
+        ax.set_xlabel("X [m]")
+        ax.set_ylabel("Y [m]")
+        ax.set_aspect("equal", adjustable="datalim")
+        ax.grid(True, linestyle=":", alpha=0.5)
+
+    for j in range(n_repeats, n_rows * n_cols):
+        axes[j // n_cols][j % n_cols].axis("off")
+
+    fig.suptitle(f"Trajectory repeats -- {n_repeats} runs, {n_agents} agents, "
+                 f"wind_enabled={wind_enabled} (green=start, red=end)", fontweight="bold")
+    fig.tight_layout()
+    fig.savefig(out_path, dpi=150)
+    plt.close(fig)
+    print(f"Saved {out_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="Reproduce the paper's Fig. 5a/5b/6 validation experiments.")
     parser.add_argument("--results-dir", default="hebbian_results",
@@ -172,8 +215,14 @@ def main():
                          help=f"Swarm size (paper: {config.HEBBIAN_N_AGENTS}).")
     parser.add_argument("--seed", type=int, default=10_000, help="Base seed for all experiments.")
     parser.add_argument("--output-dir", default=OUTPUT_DIR, help="Where to save plots.")
-    parser.add_argument("--skip", nargs="*", default=[], choices=["distance_battery", "awareness", "trajectories"],
-                         help="Skip one or more of the three experiments.")
+    parser.add_argument("--skip", nargs="*", default=[],
+                         choices=["distance_battery", "awareness", "trajectories", "trajectory_repeats"],
+                         help="Skip one or more of the experiments.")
+    parser.add_argument("--trajectory-repeat-stage", default=None, choices=list(config.HEBBIAN_STAGES),
+                         help="Which stage's controller to use for the trajectory-repeats sanity "
+                              "check (default: the last/most complete stage).")
+    parser.add_argument("--n-trajectory-repeats", type=int, default=10,
+                         help="How many seeds to run for the trajectory-repeats sanity check.")
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -211,6 +260,15 @@ def main():
         controllers = {stages[0]: stage_rules[stages[0]], stages[-1]: stage_rules[stages[-1]]}
         run_trajectory_comparison(controllers, TRAJECTORY_AGENT_COUNTS, args.seed + 100_000,
                                    os.path.join(args.output_dir, f"trajectories{args.suffix}.png"))
+
+    if "trajectory_repeats" not in args.skip:
+        repeat_stage = args.trajectory_repeat_stage or stages[-1]
+        print(f"\n=== Trajectory repeats: '{repeat_stage}' controller, "
+              f"{args.n_trajectory_repeats} seeds, {args.n_agents} agents ===")
+        run_trajectory_repeats(
+            stage_rules[repeat_stage], args.n_agents, config.HEBBIAN_STAGE_WIND_ENABLED[repeat_stage],
+            args.n_trajectory_repeats, args.seed + 200_000,
+            os.path.join(args.output_dir, f"trajectory_repeats_{repeat_stage}{args.suffix}.png"))
 
     print(f"\nDone. Plots saved in '{args.output_dir}/'.")
 
