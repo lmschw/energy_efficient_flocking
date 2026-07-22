@@ -335,7 +335,7 @@ def _flocking_velocity_command(agents, n_agents, r0, epsilon, k_align, k_goal, K
     vel[:, 1] = np.clip(K2 * F_y, -config.ANGULAR_VEL_MAX, config.ANGULAR_VEL_MAX)
     return vel
 
-def _open_video_writer(visualize):
+def _open_video_writer(visualize, video_path=None):
     if not visualize:
         plt.switch_backend('Agg')
         return None, None, None
@@ -345,7 +345,7 @@ def _open_video_writer(visualize):
         print("TkAgg backend unavailable (no tkinter/display) -- writing video without a live window.")
         plt.switch_backend('Agg')
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    v_out = cv2.VideoWriter(config.VIDEO_PATH, fourcc, config.VIDEO_FPS, config.VIDEO_SIZE)
+    v_out = cv2.VideoWriter(video_path or config.VIDEO_PATH, fourcc, config.VIDEO_FPS, config.VIDEO_SIZE)
     fig, ax = plt.subplots(figsize=config.VIDEO_FIGSIZE)
     return v_out, fig, ax
 

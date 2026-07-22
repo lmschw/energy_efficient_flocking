@@ -112,6 +112,13 @@ GAIN_NAMES = list(DEFAULT_RULES.keys())
 
 def genome_to_rules(genome):
     """Map a flat genome array (in GAIN_NAMES order) to the named rules dict."""
+    if len(genome) != len(GAIN_NAMES):
+        raise ValueError(
+            f"genome_to_rules() got a length-{len(genome)} array but expected exactly "
+            f"{len(GAIN_NAMES)} LJ gains ({GAIN_NAMES}). A length of {HEBBIAN_N_ABCD} "
+            f"means this is a Hebbian ABCD genome (from optimize_hebbian.py) -- those "
+            f"don't work with visualize_best.py/genome_to_rules at all; use "
+            f"analyze_hebbian_results.py or simulate_hebbian_episode() instead.")
     return dict(zip(GAIN_NAMES, genome))
 
 # --- Video output (visualize=True) ---
@@ -233,6 +240,14 @@ PYBULLET_USE_GUI = False                    # open a live PyBullet GUI window wh
 # pass + update), simulation_free_global_mod_2.m's getsensordata()/W(i) init loop.
 # =====================================================================================
 
+# --- Video output (visualize_hebbian.py) ---
+# Deliberately its own path, NOT a reuse of VIDEO_PATH/PYBULLET_VIDEO_PATH above -- those
+# are LJ-model outputs, and visualize_best.py/visualize_hebbian.py are not
+# interchangeable (a Hebbian ABCD genome fed into visualize_best.py silently produces
+# garbage; see config.genome_to_rules()'s length check). A separate default path makes
+# it obvious at a glance which script produced which video.
+HEBBIAN_VIDEO_PATH = "hebbian_alone.mp4"
+
 # --- Robot & sensing (Section 2.1) ---
 HEBBIAN_N_AGENTS = 20             # swarm size used throughout the paper's experiments
 HEBBIAN_SENSING_RADIUS = 2.01     # R: neighbor detection radius [m]; also the "no neighbor" default distance
@@ -278,6 +293,13 @@ HEBBIAN_CMAES_POPSIZE = 30        # lambda
 HEBBIAN_CMAES_GEN_MAX = 100       # Ngen, termination condition, PER STAGE
 HEBBIAN_CMAES_SIGMA0 = 0.3        # initial covariance/step-size
 HEBBIAN_N_REPEATS = 3             # simulations per candidate (different seeds); fitness = median
+
+# The 10 canonical seeds this project uses whenever a script wants several independent
+# trials rather than trusting a single stochastic run -- reuses BATCH_MASTER_SEEDS (the
+# LJ batch experiment's own list) as the one source of truth, rather than duplicating
+# another magic list of 10 ints. Used by optimize_hebbian.py's --seeds flag (with no
+# explicit values) to run the entire staged curriculum once per seed.
+HEBBIAN_BATCH_SEEDS = list(BATCH_MASTER_SEEDS)
 
 # --- Staged curriculum (Section 2.3 / Table 2 / Fig. 1) ---
 # Stage 1 has no wind and rewards distance only, to avoid evolving the trivial strategy of

@@ -118,7 +118,14 @@ def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_ba
     with open(os.path.join(output_dir, history_name), "w") as f:
         json.dump({"stage": stage, "battery_sensor": use_battery_sensor, "best_loss": best_loss,
                    "best_efficiency": -best_loss, "loss_curve": fitness_history,
-                   "genome": best_genome.tolist()}, f, indent=2)
+                   "genome": best_genome.tolist(),
+                   # Recorded so playback/analysis tools (visualize_hebbian.py) can detect
+                   # and default to the actual training condition instead of silently
+                   # falling back to config.HEBBIAN_N_AGENTS/HEBBIAN_MAX_BATTERY, which
+                   # would misrepresent this genome's behavior if it differs (n_agents
+                   # especially -- flocking dynamics are visibly agent-count-sensitive).
+                   "n_agents": n_agents, "max_battery": max_battery, "min_battery": min_battery,
+                   "wind_grid_nx": nx, "wind_grid_ny": ny}, f, indent=2)
 
     print(f"💾 Stage '{stage}' complete. Best efficiency: {-best_loss:.4f}. Saved {genome_name}")
     return best_genome
@@ -127,6 +134,29 @@ def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_ba
 def current_candidate_reset():
     global current_candidate
     current_candidate = 0
+
+
+def train_one_seed(seed, output_dir, stages, popsize, maxiter, n_agents, n_repeats,
+                    battery, wind_grid, no_battery_sensor):
+    """The full staged curriculum for a single seed -- stage 1 starts from a fresh
+    uniform-random genome sampled under this seed, stages 2/3 hand off the previous
+    stage's best genome, exactly as a single (non-swept) run always has. Factored out
+    so --seeds can call this once per seed into its own output_dir."""
+    os.makedirs(output_dir, exist_ok=True)
+    np.random.seed(seed)
+    name_suffix = "_nosensor" if no_battery_sensor else ""
+    plotter = FitnessPlotter(path=os.path.join(output_dir, f"hebbian_fitness_curve{name_suffix}.png"))
+
+    genome = np.random.uniform(config.HEBBIAN_ABCD_BOUNDS[0], config.HEBBIAN_ABCD_BOUNDS[1],
+                                config.HEBBIAN_N_ABCD)
+    for stage in stages:
+        genome = run_stage(stage, genome, plotter, popsize, maxiter, n_agents,
+                            n_repeats, seed, output_dir,
+                            max_battery=battery, min_battery=battery,
+                            nx=wind_grid, ny=wind_grid,
+                            use_battery_sensor=not no_battery_sensor,
+                            name_suffix=name_suffix)
+    plotter.close()
 
 
 if __name__ == "__main__":
@@ -139,7 +169,23 @@ if __name__ == "__main__":
                          help=f"Swarm size (paper: {config.HEBBIAN_N_AGENTS}).")
     parser.add_argument("--n-repeats", type=int, default=config.HEBBIAN_N_REPEATS,
                          help=f"Random-seed repeats per candidate, fitness=median (paper: {config.HEBBIAN_N_REPEATS}).")
-    parser.add_argument("--seed", type=int, default=0, help="Base seed for reproducibility.")
+    parser.add_argument("--seed", type=int, default=0,
+                         help="Base seed for reproducibility (single-run mode; ignored if --seeds is given).")
+    parser.add_argument("--seeds", type=int, nargs="*", default=None,
+                         help="Run the ENTIRE staged curriculum independently for each of these seeds "
+                              "(e.g. --seeds 42 123 777), each into its own '<output-dir>/seed_<seed>/' "
+                              "subdirectory -- for reporting a distribution (mean/std/best-of-N) across "
+                              "independent CMA-ES runs instead of trusting a single stochastic one. Pass "
+                              "the flag with no values to use this project's 10 canonical seeds "
+                              f"({config.HEBBIAN_BATCH_SEEDS}). Overrides --seed. Each seed's training is "
+                              "fully independent (separate output subdirectory, no shared state), so "
+                              "running several in parallel yourself -- separate terminals/machines, one "
+                              "invocation per seed with matching --output-dir -- is safe if you have the "
+                              "cores for it; this flag itself still runs them one after another. NOTE: a "
+                              "single full 3-stage run has taken on the order of 10 hours in this "
+                              "project's own timing, so a sequential 10-seed sweep is on the order of "
+                              "several days of continuous compute -- use --wind-grid/--battery to cut "
+                              "cost, or pass a subset of seeds first.")
     parser.add_argument("--output-dir", default="hebbian_results", help="Where to save genomes/histories.")
     parser.add_argument("--stages", nargs="+", default=list(config.HEBBIAN_STAGES),
                          choices=list(config.HEBBIAN_STAGES),
@@ -159,24 +205,23 @@ if __name__ == "__main__":
                               "so they never overwrite the normal battery-aware runs.")
     args = parser.parse_args()
 
-    os.makedirs(args.output_dir, exist_ok=True)
-    print(f"🚀 Launching staged Hebbian ABCD training: stages={args.stages}, "
-          f"popsize={args.popsize}, maxiter={args.maxiter}, n_agents={args.n_agents}, "
-          f"n_repeats={args.n_repeats}, battery_sensor={not args.no_battery_sensor}")
-
-    np.random.seed(args.seed)
-    name_suffix = "_nosensor" if args.no_battery_sensor else ""
-    plotter = FitnessPlotter(path=os.path.join(args.output_dir, f"hebbian_fitness_curve{name_suffix}.png"))
-
-    genome = np.random.uniform(config.HEBBIAN_ABCD_BOUNDS[0], config.HEBBIAN_ABCD_BOUNDS[1],
-                                config.HEBBIAN_N_ABCD)
-    for stage in args.stages:
-        genome = run_stage(stage, genome, plotter, args.popsize, args.maxiter, args.n_agents,
-                            args.n_repeats, args.seed, args.output_dir,
-                            max_battery=args.battery, min_battery=args.battery,
-                            nx=args.wind_grid, ny=args.wind_grid,
-                            use_battery_sensor=not args.no_battery_sensor,
-                            name_suffix=name_suffix)
-
-    plotter.close()
-    print(f"\n🎉 Staged training complete. Results in '{args.output_dir}/'.")
+    if args.seeds is not None:
+        seeds = args.seeds if len(args.seeds) > 0 else list(config.HEBBIAN_BATCH_SEEDS)
+        print(f"🚀 Launching {len(seeds)}-seed Hebbian ABCD training sweep: seeds={seeds}, "
+              f"stages={args.stages}, popsize={args.popsize}, maxiter={args.maxiter}, "
+              f"n_agents={args.n_agents}, n_repeats={args.n_repeats}, "
+              f"battery_sensor={not args.no_battery_sensor}")
+        for i, seed in enumerate(seeds):
+            seed_dir = os.path.join(args.output_dir, f"seed_{seed}")
+            print(f"\n{'#' * 70}\n### SEED {seed} ({i + 1}/{len(seeds)}) -> {seed_dir}/\n{'#' * 70}")
+            train_one_seed(seed, seed_dir, args.stages, args.popsize, args.maxiter, args.n_agents,
+                           args.n_repeats, args.battery, args.wind_grid, args.no_battery_sensor)
+        print(f"\n🎉 {len(seeds)}-seed sweep complete. Results in '{args.output_dir}/seed_<seed>/'.")
+    else:
+        print(f"🚀 Launching staged Hebbian ABCD training: stages={args.stages}, "
+              f"popsize={args.popsize}, maxiter={args.maxiter}, n_agents={args.n_agents}, "
+              f"n_repeats={args.n_repeats}, battery_sensor={not args.no_battery_sensor}")
+        train_one_seed(args.seed, args.output_dir, args.stages, args.popsize, args.maxiter,
+                       args.n_agents, args.n_repeats, args.battery, args.wind_grid,
+                       args.no_battery_sensor)
+        print(f"\n🎉 Staged training complete. Results in '{args.output_dir}/'.")
