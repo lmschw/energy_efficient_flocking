@@ -4,7 +4,7 @@ outcmaes/
 __pycache__/
 optimization_results/
 ants-2026-polimi-energy-efficient-flocking-main/
-old/
+initial_implementation/results/
 *.cpyc
 *.mp4
 *.m
