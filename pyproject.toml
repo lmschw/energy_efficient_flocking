@@ -1,0 +1,13 @@
+[project]
+name = "energy-efficient-flocking"
+version = "0.1.0"
+description = "Energy-efficient swarm flocking: the original LJ-model implementation (initial_implementation/) and the ANTS 2026 Hebbian ABCD replication (ants26_replication/). See README.md -- these are two independent projects sharing one dependency set, not one codebase."
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.18",
+    "matplotlib>=3.11",
+    "opencv-python-headless>=5.0",
+    "cma>=4.4",
+    "pybullet>=3.2",
+]
