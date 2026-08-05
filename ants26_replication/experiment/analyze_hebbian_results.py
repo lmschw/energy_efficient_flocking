@@ -47,6 +47,20 @@ def load_stage_genome(results_dir, stage, suffix=""):
     return unflatten_abcd(np.load(path))
 
 
+def _discover_available_stages(results_dir, suffix=""):
+    """Returns the subset of config.HEBBIAN_STAGES (in that order) that actually have a
+    saved genome in results_dir -- lets every experiment below adapt to whatever subset
+    of stages was actually trained (e.g. a --stages walk_left save_battery_avoid_all run
+    that deliberately skips save_battery_avoid_wall) instead of assuming all three exist."""
+    available = [stage for stage in config.HEBBIAN_STAGES
+                 if os.path.exists(os.path.join(results_dir, f"hebbian_{stage}{suffix}_best.npy"))]
+    if not available:
+        raise FileNotFoundError(
+            f"No hebbian_<stage>{suffix}_best.npy files found in '{results_dir}' -- run "
+            f"optimize_hebbian.py first (add --no-battery-sensor if suffix='_nosensor').")
+    return available
+
+
 def _confidence_ellipse(ax, x, y, color, n_std=1.0):
     if len(x) < 3:
         return
@@ -226,7 +240,11 @@ def main():
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
-    stages = list(config.HEBBIAN_STAGES)
+    stages = _discover_available_stages(args.results_dir, args.suffix)
+    if len(stages) < len(config.HEBBIAN_STAGES):
+        missing = [s for s in config.HEBBIAN_STAGES if s not in stages]
+        print(f"Note: '{args.results_dir}' only has genomes for {stages} (missing: {missing}) "
+              f"-- adapting experiments to use only what's available.")
     stage_rules = {stage: load_stage_genome(args.results_dir, stage, args.suffix) for stage in stages}
 
     if "distance_battery" not in args.skip:
@@ -263,6 +281,9 @@ def main():
 
     if "trajectory_repeats" not in args.skip:
         repeat_stage = args.trajectory_repeat_stage or stages[-1]
+        if repeat_stage not in stage_rules:
+            raise ValueError(f"--trajectory-repeat-stage '{repeat_stage}' has no genome in "
+                              f"'{args.results_dir}' -- available stages: {stages}")
         print(f"\n=== Trajectory repeats: '{repeat_stage}' controller, "
               f"{args.n_trajectory_repeats} seeds, {args.n_agents} agents ===")
         run_trajectory_repeats(
