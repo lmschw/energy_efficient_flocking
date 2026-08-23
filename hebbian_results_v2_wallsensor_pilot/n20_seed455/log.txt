@@ -1,0 +1,2 @@
+$ uv run /home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/optimize_hebbian.py --n-agents 20 --seed 455 --stages walk_left save_battery_avoid_all --output-dir ../../hebbian_results_v2_wallsensor_pilot/n20_seed455 --wind-grid 50
+

@@ -1,0 +1,9 @@
+$ uv run /home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/visualize_hebbian.py ../../hebbian_results_v2_wallsensor_sweep/n3_seed123/hebbian_save_battery_avoid_all_best.npy --video-path ../../hebbian_results_v2_wallsensor_sweep/n3_seed123/video_save_battery_avoid_all.mp4
+
+/home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/simulation_hebbian.py:212: UserWarning: shading value 'interp' not in list of valid values ['gouraud', 'nearest', 'flat', 'auto']. Setting shading='auto'.
+  ax.pcolormesh(X, Y, powerVals.T, shading='interp', cmap='viridis', vmin=0, vmax=np.max(powerVals))
+Loaded Hebbian ABCD genome from '../../hebbian_results_v2_wallsensor_sweep/n3_seed123/hebbian_save_battery_avoid_all_best.npy'
+n_agents=3, wind_enabled=True, battery_sensor=True
+TkAgg backend unavailable (no tkinter/display) -- writing video without a live window.
+Playback complete -- dist_travelled=8.5229, avg_battery=0.5691, collision_time=0.00, wall_collision_time=0.00
+Video saved to '../../hebbian_results_v2_wallsensor_sweep/n3_seed123/video_save_battery_avoid_all.mp4'.

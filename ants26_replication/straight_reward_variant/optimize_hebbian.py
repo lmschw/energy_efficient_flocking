@@ -57,11 +57,11 @@ def fitness_wrapper(genome):
     for r in range(active_n_repeats):
         seed = active_seed_base + current_candidate * 1000 + r  # distinct seed per repeat, per candidate
         try:
-            dist, batt, ct, wct = simulate_hebbian_episode(
+            dist, batt, ct, wct, y_drift = simulate_hebbian_episode(
                 rules, seed=seed, n_agents=active_n_agents, wind_enabled=wind_enabled,
                 max_battery=active_max_battery, min_battery=active_min_battery,
                 nx=active_nx, ny=active_ny, use_battery_sensor=active_use_battery_sensor)
-            effs.append(stage_fitness(dist, batt, ct, wct, active_stage))
+            effs.append(stage_fitness(dist, batt, ct, y_drift, active_stage))
         except Exception as e:
             print(f"\n⚠️  Candidate {current_candidate} repeat {r} failed "
                   f"({type(e).__name__}: {e}) -- treating as worst-case for this repeat")

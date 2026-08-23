@@ -1,0 +1,30 @@
+$ uv run /home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/optimize_hebbian.py --n-agents 20 --seed 123 --stages walk_left save_battery_avoid_all --output-dir ../../hebbian_results_v2_wallsensor_pilot/n20_seed123 --wind-grid 50
+
+🚀 Launching staged Hebbian ABCD training: stages=['walk_left', 'save_battery_avoid_all'], popsize=30, maxiter=100, n_agents=20, n_repeats=3, battery_sensor=True
+
+======================================================================
+🧬 STAGE: walk_left  (wind_enabled=False, battery_sensor=True)
+======================================================================
+(15_w,30)-aCMA-ES (mu_w=8.6,w_1=20%) in dimension 1040 (seed=1028273, Sun Aug 16 17:04:30 2026)
+   ↳ Evaluating Swarm Candidate: 1/30 ...Traceback (most recent call last):
+  File "/home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/optimize_hebbian.py", line 244, in <module>
+    train_one_seed(args.seed, args.output_dir, args.stages, args.popsize, args.maxiter,
+  File "/home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/optimize_hebbian.py", line 164, in train_one_seed
+    genome = run_stage(stage, genome, plotter, popsize, maxiter, n_agents,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/optimize_hebbian.py", line 105, in run_stage
+    fitness_values = [fitness_wrapper(sol) for sol in solutions]
+                      ^^^^^^^^^^^^^^^^^^^^
+  File "/home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/optimize_hebbian.py", line 60, in fitness_wrapper
+    dist, batt, ct, wct = simulate_hebbian_episode(
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/simulation_hebbian.py", line 160, in simulate_hebbian_episode
+    v_i, w_i, w1n, w2n, w3n = hebbian_step(sensor_inputs[:, i], w1, w2, w3, abcd_rules)
+                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/hebbian_controller.py", line 79, in hebbian_step
+    w1_new = _normalize(w1 + eta * (rules["A1"] * (x_in @ h1) + rules["B1"] * x_in
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/lilly/dev/energy_efficient_flocking/energy_efficient_flocking/ants26_replication/wall_sensor_variant/hebbian_controller.py", line 57, in _normalize
+    maxval = np.max(np.abs(w))
+             ^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
