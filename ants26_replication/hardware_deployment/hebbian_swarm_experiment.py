@@ -1,15 +1,16 @@
 """Experiment class deploying a genome trained with optimize_hebbian.py
 (energy_efficient_flocking/experiment/optimize_hebbian.py) onto real Thymio+Pi hardware
-via thymio_swarm_platform / thymio_raspberry_swarm_control.
+via thymio_swarm_platform.
 
 Matches that platform's de-facto experiment contract (there is no formal base class --
 see README.md): __init__(robot, config, logger), async run()/pause()/resume()/stop().
 
-To actually deploy: copy every *.py file in this directory except local_test_harness.py
-(and diagnostics/, which are standalone tools, not part of the experiment) into
-thymio_raspberry_swarm_control/experiments/hebbian_swarm/, register it in that repo's
-swarm_project.yaml, and start a session with a config dict providing at least
-genome_path, hostnames, and self_hostname (see README.md for the full walkthrough).
+This directory (ants26_replication/hardware_deployment/) IS the deployable project: it
+has its own swarm_project.yaml registering this class, so thymio_swarm_platform's
+controller-side scripts (thymio_swarm_platform/examples/hebbian_swarm_trial.py) can point
+client.project() straight at this repo's GitHub remote -- no copying into another repo.
+Start a session with a config dict providing at least genome_path, hostnames, and
+self_hostname (see README.md for the full walkthrough).
 """
 import asyncio
 import math
@@ -17,10 +18,10 @@ import os
 import sys
 
 # thymio_swarm_platform's ProjectLoader only adds the project's ROOT directory to
-# sys.path (see loader.py), not this file's own directory -- so once this file lives at
-# experiments/hebbian_swarm/hebbian_swarm_experiment.py, the bare `import controller_config`
-# below (and the same pattern in sensor_model.py/hebbian_controller.py/pose_utils.py/
-# motor_utils.py/wind_battery_model.py) would raise ModuleNotFoundError without this.
+# sys.path (see loader.py), not this file's own directory. This file happens to sit
+# directly in project root (swarm_project.yaml's own directory) so this is a no-op in
+# practice today, but it's kept as a defensive habit shared with diagnostics/*.py (which
+# DO need it, being one level deeper) in case this file ever moves.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
@@ -81,13 +82,12 @@ class HebbianSwarmExperiment:
     def _resolve_genome_path(genome_path):
         """Resolves a relative genome_path against THIS FILE's own directory if it
         doesn't already exist relative to the process's current working directory.
-        thymio_raspberry_swarm_control's ProjectManager never chdir()s into the active
-        project directory before running an experiment (confirmed: manager.py just
-        clones/pulls it, and daemon/server.py's own cwd print shows whatever directory
-        the daemon process happened to be started from) -- so a config value like
-        "experiments/hebbian_swarm/hebbian_..._best.npy", correct relative to the
-        project root, is NOT reliably correct relative to os.getcwd() at runtime. An
-        absolute path, or a path that already resolves from the real cwd, is used as-is.
+        thymio_swarm_platform's ProjectManager never chdir()s into the active project
+        directory before running an experiment (confirmed: manager.py just clones/pulls
+        it, and daemon/server.py's own cwd print shows whatever directory the daemon
+        process happened to be started from) -- so a bare filename is NOT guaranteed to
+        resolve relative to os.getcwd() at runtime. An absolute path, or a path that
+        already resolves from the real cwd, is used as-is.
         """
         if os.path.isabs(genome_path) or os.path.exists(genome_path):
             return genome_path

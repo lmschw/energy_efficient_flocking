@@ -1,18 +1,24 @@
 # Hardware deployment: Hebbian ABCD controller on real Thymio + Raspberry Pi swarms
 
 Deploys a genome trained by `experiment/optimize_hebbian.py` (in this same repo) onto
-real hardware via the existing `thymio_swarm_platform` / `thymio_raspberry_swarm_control`
-platform (found at `/home/lilly/dev/thymio_swarm/`). This directory is itself a
-self-contained, source-of-truth package (edit/test/calibrate here); its files get copied
-out into `thymio_raspberry_swarm_control` as subpackages when deploying (already done for
-the "Current trial config" below -- see `experiments/hebbian_swarm/` and
-`experiments/calibrate_speed/` in that checkout) since that's the repo the Pis actually
-`git pull` their code from.
+real hardware via `thymio_swarm_platform` (found at `/home/lilly/dev/thymio_swarm/`).
+
+**This directory IS the deployable project.** `swarm_project.yaml` (right here) registers
+its experiments, so `thymio_swarm_platform`'s `client.project()` can clone this repo's
+GitHub remote directly (`ProjectManager` only keeps this directory's own subtree once
+cloned -- see that file's header comment) -- exactly the same "point the platform at an
+external repo" pattern `thymio_swarm_platform/examples/decision_external_repo.py` already
+uses for a different, unrelated project. Nothing needs to be copied into any other repo.
+The **execution** (controller-side scripts that connect to the coordinator and drive
+install/start/stop) lives in `thymio_swarm_platform/examples/hebbian_swarm_trial.py` and
+`hebbian_speed_calibration.py` instead -- that's the repo with `swarm_platform` actually
+installed, and where its other example launchers already live.
 
 ## Files
 
 | File | Purpose |
 |---|---|
+| `swarm_project.yaml` | Registers this directory's experiments with the platform. Read its header comment -- it explains why the genome `.npy` lives flat in here instead of in `../hebbian_results_v2/`. |
 | `controller_config.py` | All tunable/calibration constants. **Read this first.** |
 | `sensor_model.py` | 4-quadrant range/bearing sensing -- ported verbatim from `experiment/sensor_model.py` (same tested math, only the config import changed). |
 | `hebbian_controller.py` | The MLP forward pass + Hebbian update + genome loading -- ported verbatim from `experiment/hebbian_controller.py`. |
@@ -20,11 +26,14 @@ the "Current trial config" below -- see `experiments/hebbian_swarm/` and
 | `motor_utils.py` | Converts the controller's `(v, w)` output into raw `Robot.drive(left, right)` motor targets. |
 | `hebbian_swarm_experiment.py` | The actual experiment class matching the platform's contract (see below). |
 | `wind_battery_model.py` | Optional: computes a *simulated* battery level from real robot positions -- ported verbatim from the simulation's wind/drag/battery equations. Only imported when `BATTERY_MODE = "simulated"` (see Battery below). Requires `scipy`. |
+| `hebbian_save_battery_avoid_all_best.npy` | The deployed genome -- a copy of `../hebbian_results_v2/hebbian_save_battery_avoid_all_best.npy` (see "Current trial config"). Kept flat here, not referenced from its original location, for the same reason as `swarm_project.yaml`'s note above. |
 | `local_test_harness.py` | Validates the whole pipeline with fake robot/pose objects -- **run this before touching real hardware**, since the platform itself has no dry-run mode at all. |
 | `diagnostics/print_poses_experiment.py` | Calibration helper #1 (position axes / heading offset) -- deployed separately from the real controller (see Calibration below). |
 | `diagnostics/calibrate_speed_experiment.py` | Calibration helper #2 (`MOTOR_UNITS_PER_MPS`) -- drives a sweep of raw motor targets and measures real speed from OptiTrack position deltas (see Calibration below). |
-| `run_speed_calibration.py` | Controller-side launcher for `calibrate_speed_experiment.py` -- deploys it to all of `HOSTS`, collects the per-robot recommended `MOTOR_UNITS_PER_MPS`, prints a summary. Run this from wherever `swarm_platform` is importable, not from this repo. |
-| `run_hardware_trial.py` | Controller-side launcher for the real 3-agent trial -- same pattern as `thymio_swarm_platform/examples/decision_external_repo.py`. Run this only after both calibration steps are done. |
+
+Controller-side launchers (in `thymio_swarm_platform/examples/`, not here):
+`hebbian_speed_calibration.py` (run first) and `hebbian_swarm_trial.py` (run after
+calibration). Both point `client.project()` at this repo's GitHub remote.
 
 ## Why this structure
 
@@ -148,30 +157,32 @@ effective learning dynamics. This also happens to match OptiTrack's own ~2 Hz pu
 - **`BATTERY_MODE = "simulated"`** -- this genome was trained WITH the battery sensor
   (`battery_sensor=True` in its history JSON), so `"none"` mode would silently feed it a
   placeholder input it never learned to use. Requires `scipy` on each Pi.
-- **Hosts:** `thymio-15`, `thymio-16`, `thymio-17` -- already have OptiTrack rigid-body
-  mappings in `thymio_raspberry_swarm_control/swarm_project.yaml`.
+- **Hosts:** `thymio-15`, `thymio-16`, `thymio-17` -- their OptiTrack rigid-body mappings
+  are in this directory's own `swarm_project.yaml` (see its header comment for why that's
+  duplicated from, and not read out of, `thymio_raspberry_swarm_control`).
 
 ## A subpackage import gotcha (already fixed in this package, worth knowing about)
 
 `thymio_swarm_platform`'s `ProjectLoader` only adds the project's **root** directory to
-`sys.path` (confirmed in `swarm_platform/projects/loader.py`), not the directory an
-individual experiment file lives in. Once these files are copied into a subpackage like
-`experiments/hebbian_swarm/`, their bare sibling imports (`import controller_config as
-cfg`, used throughout so `local_test_harness.py` can `python local_test_harness.py`
-directly with no package machinery) would raise `ModuleNotFoundError` at daemon-load time
-without a fix. `hebbian_swarm_experiment.py`, `diagnostics/print_poses_experiment.py`,
-and `diagnostics/calibrate_speed_experiment.py` each insert their own directory into
-`sys.path` at the top of the file (before their sibling imports) to fix this -- if you add
-another entry-point experiment file to this package, copy the same three-line shim.
+`sys.path` (confirmed in `swarm_platform/projects/loader.py`) -- which, for this project,
+*is* this directory, so `hebbian_swarm_experiment.py`'s own bare sibling imports
+(`import controller_config as cfg`) resolve fine as-is. `diagnostics/*.py` sits one level
+deeper, though (registered in `swarm_project.yaml` as `diagnostics.calibrate_speed_experiment...`
+etc.), so its bare imports would raise `ModuleNotFoundError` at daemon-load time without a
+fix -- both `diagnostics/print_poses_experiment.py` and
+`diagnostics/calibrate_speed_experiment.py` insert their own directory into `sys.path` at
+the top of the file (before their sibling imports) to handle this. If you add another
+experiment file anywhere other than this directory's own root, copy the same three-line
+shim (`hebbian_swarm_experiment.py` keeps a no-op copy of it too, defensively, in case it
+ever moves).
 
 Relatedly, `ProjectManager` never `chdir()`s into the active project directory before
-running an experiment, so a relative `genome_path` like
-`"experiments/hebbian_swarm/hebbian_..._best.npy"` is correct relative to the project
-root but NOT reliably correct relative to the daemon's actual working directory at
-runtime. `hebbian_swarm_experiment.py`'s `_resolve_genome_path()` falls back to looking
-next to its own file if the path doesn't already resolve -- so `config["genome_path"]`
-only needs to be the `.npy`'s basename as long as it's deployed alongside
-`hebbian_swarm_experiment.py` (see `run_hardware_trial.py`).
+running an experiment, so a bare filename like `config["genome_path"]` is not guaranteed
+to resolve relative to the daemon's actual working directory at runtime.
+`hebbian_swarm_experiment.py`'s `_resolve_genome_path()` falls back to looking next to its
+own file if the given path doesn't already resolve -- so `config["genome_path"]` only
+needs to be the `.npy`'s basename, which is what
+`thymio_swarm_platform/examples/hebbian_swarm_trial.py` passes.
 
 ## Calibration — do this before trusting any real run
 
@@ -202,49 +213,37 @@ code already assumes a Y-up Motive calibration (ground plane = X/Z, axes `(0, 2)
 matches this file's own guess above. Still verify with the printed values rather than
 trusting either guess.
 
-To calibrate (4), `MOTOR_UNITS_PER_MPS`: deploy `diagnostics/calibrate_speed_experiment.py`
-via `run_speed_calibration.py` (see below) and use the value it recommends.
+To calibrate (4), `MOTOR_UNITS_PER_MPS`: run
+`thymio_swarm_platform/examples/hebbian_speed_calibration.py`, which deploys
+`diagnostics/calibrate_speed_experiment.py` and prints the value it recommends.
 
 ## Deployment steps
 
-**Steps 1-3 below are already done in this checkout** for the current trial config (see
-"Current trial config" above) -- `thymio_raspberry_swarm_control/experiments/hebbian_swarm/`
-and `experiments/calibrate_speed/` already exist there with these files copied in and
-registered in that repo's `swarm_project.yaml`. What's still open: calibration (step 4,
-unverified placeholders still in `controller_config.py`), and pushing that repo's commits
-so the Pis can actually pull them (git clone/pull runs on the Pi side -- your local
-checkout being up to date changes nothing until it's pushed).
+**Steps 1-2 below are already done in this checkout** for the current trial config (see
+"Current trial config" above) -- `swarm_project.yaml` already registers `hebbian_swarm`,
+`calibrate_speed`, and `print_poses`, and the genome `.npy` already sits flat in this
+directory. What's still open: calibration (step 3, unverified placeholders still in
+`controller_config.py`), and pushing this repo's commits so the Pis can actually pull them
+(git clone/pull runs on the Pi side -- your local checkout being up to date changes
+nothing until it's pushed).
 
 1. Pick (or finish training) a genome — `--no-battery-sensor` for `BATTERY_MODE =
    "none"`, or a battery-aware genome (no `--no-battery-sensor`) for `BATTERY_MODE =
    "simulated"` — ideally via `python ../experiment/optimize_hebbian.py [--no-battery-sensor]
-   [--wind-grid 50 ...]`.
+   [--wind-grid 50 ...]`. Copy the resulting `.npy` flat into this directory (see
+   `swarm_project.yaml`'s header comment for why) and point `GENOME_PATH_ON_PI` in
+   `thymio_swarm_platform/examples/hebbian_swarm_trial.py` at its basename.
 2. Run `python local_test_harness.py [genome_path]` locally first — no hardware needed,
    validates the whole pipeline (shapes, bounds, missing-pose handling, and both battery
    modes if `scipy` is installed locally).
-3. Copy `controller_config.py`, `sensor_model.py`, `hebbian_controller.py`,
-   `pose_utils.py`, `motor_utils.py`, `hebbian_swarm_experiment.py`,
-   `wind_battery_model.py` (needed whenever `BATTERY_MODE = "simulated"`; requires `scipy`
-   on that Pi), and the trained `.npy` genome file into a subpackage in your checkout of
-   `thymio_raspberry_swarm_control`, e.g. `experiments/hebbian_swarm/` -- and separately,
-   `controller_config.py` + `diagnostics/calibrate_speed_experiment.py` into
-   `experiments/calibrate_speed/`. Register both in that repo's `swarm_project.yaml`:
-   ```yaml
-   experiments:
-     hebbian_swarm:
-       class: experiments.hebbian_swarm.hebbian_swarm_experiment.HebbianSwarmExperiment
-       tracking: true   # required -- this is what makes the platform push OptiTrack poses at all
-     calibrate_speed:
-       class: experiments.calibrate_speed.calibrate_speed_experiment.CalibrateSpeedExperiment
-       tracking: true
-   ```
-   Commit and push -- the Pis pull this repo via `git`, they never see your local checkout.
-4. Calibrate, in order: `diagnostics/print_poses_experiment.py` (position axes / heading,
-   see above), then `run_speed_calibration.py` (speed). Update `controller_config.py`'s
-   placeholders with what you measure, **in both** this repo's `hardware_deployment/` and
-   the deployed copy in `thymio_raspberry_swarm_control`, then commit+push the latter again.
-5. Run `run_hardware_trial.py` (from an environment where `swarm_platform` is importable,
-   e.g. `thymio_swarm_platform`'s own venv -- not this repo's). It uses
+3. Calibrate, in order: `diagnostics/print_poses_experiment.py` via a small ad hoc session
+   (position axes / heading, see above -- there's no dedicated launcher for this one since
+   it's meant to be watched interactively rather than automated), then
+   `thymio_swarm_platform/examples/hebbian_speed_calibration.py` (speed). Update
+   `controller_config.py`'s placeholders with what you measure.
+4. Commit and push this repo — the Pis pull it via `git`, they never see your local
+   checkout — then run `thymio_swarm_platform/examples/hebbian_swarm_trial.py` (from an
+   environment where `swarm_platform` is importable, e.g. its own venv). It uses
    `session.start(experiment, config=shared_config, host_configs=per_host_config)` --
    `host_configs` merges a per-hostname dict on top of the shared `config` for that one
    host (see `swarm_platform.controller.session.SwarmSession.start()`), which is a
