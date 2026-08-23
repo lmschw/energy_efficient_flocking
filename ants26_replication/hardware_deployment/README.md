@@ -11,10 +11,9 @@ remote directly -- exactly the same "point the platform at an external repo" pat
 `thymio_swarm_platform/examples/decision_external_repo.py` already uses for a different,
 unrelated project. Nothing needs to be copied into any other repo. The **execution**
 (controller-side scripts that connect to the coordinator and drive install/start/stop)
-lives in `thymio_swarm_platform/examples/hebbian_swarm_trial.py`,
-`hebbian_speed_calibration.py`, and `hebbian_pose_calibration.py` instead -- that's the
-repo with `swarm_platform` actually installed, and where its other example launchers
-already live.
+lives in `thymio_swarm_platform/examples/hebbian_swarm_trial.py` and
+`hebbian_position_heading_calibration.py` instead -- that's the repo with `swarm_platform`
+actually installed, and where its other example launchers already live.
 
 ## Files
 
@@ -30,12 +29,15 @@ already live.
 | `wind_battery_model.py` | Optional: computes a *simulated* battery level from real robot positions -- ported verbatim from the simulation's wind/drag/battery equations. Only imported when `BATTERY_MODE = "simulated"` (see Battery below). Requires `scipy`. |
 | `hebbian_save_battery_avoid_all_best.npy` | The deployed genome -- a copy of `../hebbian_results_v2/hebbian_save_battery_avoid_all_best.npy` (see "Current trial config"). Kept flat here, not referenced from its original location, for the same reason as `swarm_project.yaml`'s note above. |
 | `local_test_harness.py` | Validates the whole pipeline with fake robot/pose objects -- **run this before touching real hardware**, since the platform itself has no dry-run mode at all. |
-| `diagnostics/print_poses_experiment.py` | Calibration helper #1 (position axes / heading offset) -- deployed separately from the real controller (see Calibration below). |
-| `diagnostics/calibrate_speed_experiment.py` | Calibration helper #2 (`MOTOR_UNITS_PER_MPS`) -- drives a sweep of raw motor targets and measures real speed from OptiTrack position deltas (see Calibration below). |
+| `diagnostics/calibrate_position_heading_experiment.py` | **Calibration helper (current).** Sweeps a series of straight-line drives and derives `POSITION_AXES`, `HEADING_OFFSET_RAD`, AND `MOTOR_UNITS_PER_MPS` all from the same OptiTrack data -- see Calibration below. Supersedes the two files below (kept, not deleted). |
+| `diagnostics/print_poses_experiment.py` | Superseded by `calibrate_position_heading_experiment.py`. Manual/eyeball calibration helper (position axes / heading offset) -- still useful as a live raw-pose viewer if you want to sanity-check something by hand. |
+| `diagnostics/calibrate_speed_experiment.py` | Superseded by `calibrate_position_heading_experiment.py`. Speed-only calibration helper (`MOTOR_UNITS_PER_MPS`) -- kept for a quick narrower recheck if you don't need the other two constants re-verified. |
 
 Controller-side launchers (in `thymio_swarm_platform/examples/`, not here), run in this
-order: `hebbian_pose_calibration.py`, `hebbian_speed_calibration.py`,
-`hebbian_swarm_trial.py`. All three point `client.project()` at this repo's GitHub remote.
+order: `hebbian_position_heading_calibration.py`, `hebbian_swarm_trial.py`. Both point
+`client.project()` at this repo's GitHub remote. (`hebbian_pose_calibration.py` and
+`hebbian_speed_calibration.py` still exist alongside it for the superseded PI-side
+experiments above, but you don't need either one for a normal calibration pass anymore.)
 
 ## Why this structure
 
@@ -173,8 +175,8 @@ So `hebbian_swarm_experiment.py` (registered as
 `ants26_replication.hardware_deployment.hebbian_swarm_experiment...`) and everything under
 `diagnostics/` alike need this directory added to `sys.path` themselves before their own
 bare sibling imports (`import controller_config as cfg`) will resolve -- without it,
-they'd raise `ModuleNotFoundError` at daemon-load time. `hebbian_swarm_experiment.py`,
-`diagnostics/print_poses_experiment.py`, and `diagnostics/calibrate_speed_experiment.py`
+they'd raise `ModuleNotFoundError` at daemon-load time. `hebbian_swarm_experiment.py` and
+every file under `diagnostics/` (including `calibrate_position_heading_experiment.py`)
 each insert their own directory into `sys.path` at the top of the file (before their
 sibling imports) to handle this -- if you add another experiment file anywhere in this
 package, copy the same three-line shim.
@@ -189,7 +191,7 @@ needs to be the `.npy`'s basename, which is what
 
 ## Calibration — do this before trusting any real run
 
-Three constants in `controller_config.py` are **unverified placeholders** and will
+Four constants in `controller_config.py` are **unverified placeholders** and will
 probably be wrong for your specific rig until you check them:
 
 1. **`POSITION_AXES`** — which two of OptiTrack's `(x, y, z)` map to this codebase's 2D
@@ -202,33 +204,63 @@ probably be wrong for your specific rig until you check them:
    controller always migrates toward -x in its own frame).
 3. **`ROTATION_SIGN`** — flip this (`1.0` ↔ `-1.0`) if a deployed robot turns the wrong
    way.
+4. **`MOTOR_UNITS_PER_MPS`** — the raw `motor.target` value per m/s of real speed.
 
-To calibrate (1) and (2): deploy `diagnostics/print_poses_experiment.py` instead of the
-real controller first. It needs `pose_utils.py` and `controller_config.py` alongside it
-(copy it *out of* the `diagnostics/` folder into the same flat directory as the other
-files when deploying — it's kept visually separate here only so it isn't mistaken for
-part of the real controller). Run it, physically move/rotate a tracked robot, and watch
-the printed raw position/yaw values against what you'd expect; adjust `POSITION_AXES`
-and `HEADING_OFFSET_RAD` until they line up, then redeploy with the real controller. One
-data point worth starting from: `swarm_platform.robot.Robot.get_relative_poses()` itself
-unpacks a pose's position as `ox, _, oz = own_pose.position` -- i.e. the platform's own
-code already assumes a Y-up Motive calibration (ground plane = X/Z, axes `(0, 2)`), which
-matches this file's own guess above. Still verify with the printed values rather than
-trusting either guess.
+### The command to run
 
-To calibrate (4), `MOTOR_UNITS_PER_MPS`: run
-`thymio_swarm_platform/examples/hebbian_speed_calibration.py`, which deploys
-`diagnostics/calibrate_speed_experiment.py` and prints the value it recommends.
+From an environment with `swarm_platform` installed (its own venv, not this repo's):
+
+```
+cd /home/lilly/dev/thymio_swarm/thymio_swarm_platform/examples
+python hebbian_position_heading_calibration.py
+```
+
+This deploys `calibrate_position_heading` (registered in `/swarm_project.yaml`) to every
+host in that launcher's `HOSTS` list at once, sweeps a series of straight-line drives
+(`MOTOR_TARGETS = [100, 200, 300, 400, 500]`, `HOLD_SECONDS = 10.0` each — edit those
+constants at the top of the launcher if you want a shorter/longer sweep), collects logs,
+and prints (1)-(4) all together: a per-robot table, POSITION_AXES/MOTOR_UNITS_PER_MPS
+recommendations aggregated across all robots (shared constants — one
+`controller_config.py` for every Pi), and HEADING_OFFSET_RAD both per-robot and
+aggregated (flagged if robots disagree by more than noise would explain — plausible if
+their rigid bodies weren't defined with the same "front" convention in Motive, unlike
+POSITION_AXES/MOTOR_UNITS_PER_MPS which are true platform-wide constants).
+
+**Give every robot a clear, straight, obstacle-free runway before starting** — a couple
+of meters, with no two robots' runways crossing (they calibrate independently and don't
+sense each other during this test).
+
+Update `controller_config.py` with what it recommends, commit + push (the Pis pull via
+`git`, not your local checkout — see Deployment steps below), then determine (3),
+`ROTATION_SIGN`, separately: a straight-line drive carries no information about turn
+direction by construction, no calibration procedure can extract it from this data — just
+observe which way a deployed robot spins during `hebbian_swarm_trial.py` and flip the
+sign if it's backwards.
+
+### Fallback: the old manual/single-purpose scripts still work
+
+`diagnostics/print_poses_experiment.py` (for (1)/(2), by eye) and
+`diagnostics/calibrate_speed_experiment.py` (for (4) only) are still in this package,
+launched via `thymio_swarm_platform/examples/hebbian_pose_calibration.py` and
+`hebbian_speed_calibration.py` respectively, in case you want a narrower recheck of just
+one constant, or to watch a robot's raw pose feed live over SSH
+(`journalctl -u swarm-daemon.service -f`) for some other reason. For a normal first
+calibration pass, `hebbian_position_heading_calibration.py` above does the job of both at
+once. One data point worth knowing either way:
+`swarm_platform.robot.Robot.get_relative_poses()` itself unpacks a pose's position as
+`ox, _, oz = own_pose.position` — i.e. the platform's own code already assumes a Y-up
+Motive calibration (ground plane = X/Z, axes `(0, 2)`), which matches this file's own
+placeholder guess. Still verify with a real measurement rather than trusting either guess.
 
 ## Deployment steps
 
 **Steps 1-2 below are already done in this checkout** for the current trial config (see
 "Current trial config" above) -- `/swarm_project.yaml` (repo root) already registers
-`hebbian_swarm`, `calibrate_speed`, and `print_poses`, and the genome `.npy` already sits
-flat in this directory. What's still open: calibration (step 3, unverified placeholders
-still in `controller_config.py`), and pushing this repo's commits so the Pis can actually
-pull them (git clone/pull runs on the Pi side -- your local checkout being up to date
-changes nothing until it's pushed).
+`hebbian_swarm`, `calibrate_position_heading` (plus the superseded `calibrate_speed` and
+`print_poses`), and the genome `.npy` already sits flat in this directory. What's still
+open: calibration (step 3, unverified placeholders still in `controller_config.py`), and
+pushing this repo's commits so the Pis can actually pull them (git clone/pull runs on the
+Pi side -- your local checkout being up to date changes nothing until it's pushed).
 
 0. **`/swarm_project.yaml` must stay at the repo root.** It was originally placed in this
    directory, which worked for the Pi-side loader (`rglob`-based, tolerates nesting) but
@@ -245,12 +277,12 @@ changes nothing until it's pushed).
 2. Run `python local_test_harness.py [genome_path]` locally first — no hardware needed,
    validates the whole pipeline (shapes, bounds, missing-pose handling, and both battery
    modes if `scipy` is installed locally).
-3. Calibrate, in order: `thymio_swarm_platform/examples/hebbian_pose_calibration.py`
-   (position axes / heading -- read live via `journalctl -u swarm-daemon.service -f` over
-   SSH on each Pi, see that script's docstring), then
-   `thymio_swarm_platform/examples/hebbian_speed_calibration.py` (speed, printed back to
-   the controller machine directly). Update `controller_config.py`'s placeholders with
-   what you measure.
+3. Calibrate: `thymio_swarm_platform/examples/hebbian_position_heading_calibration.py`
+   (position axes, heading offset, AND speed, all from one straight-line-drive sweep,
+   printed back to the controller machine directly -- see Calibration above). Update
+   `controller_config.py`'s placeholders with what it recommends, then determine
+   `ROTATION_SIGN` separately by observing a deployed robot's turn direction (that
+   script's docstring covers why it can't be derived from the same sweep).
 4. Commit and push this repo — the Pis pull it via `git`, they never see your local
    checkout — then run `thymio_swarm_platform/examples/hebbian_swarm_trial.py` (from an
    environment where `swarm_platform` is importable, e.g. its own venv). It uses

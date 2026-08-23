@@ -83,6 +83,16 @@ class CalibratePositionHeadingExperiment:
         if not self.self_hostname:
             raise ValueError("config['self_hostname'] is required (used to look up this "
                               "robot's own tracked pose).")
+        stale_keys = [k for k in ("motor_target", "drive_seconds") if k in self.config]
+        if stale_keys:
+            raise ValueError(
+                f"config has {stale_keys}, which this experiment no longer accepts -- it "
+                f"was a single-drive test before, now it sweeps multiple targets like "
+                f"calibrate_speed_experiment.py does. Use 'motor_targets' (a list, default "
+                f"{DEFAULT_MOTOR_TARGETS}) and 'hold_seconds' (per-leg drive duration, "
+                f"default {DEFAULT_HOLD_SECONDS}) instead -- passing the old keys would "
+                f"otherwise silently fall back to these defaults and ignore whatever you "
+                f"specified, since dict.get() doesn't know an old key from a typo.")
         self.motor_targets = list(self.config.get("motor_targets", DEFAULT_MOTOR_TARGETS))
         self.hold_seconds = float(self.config.get("hold_seconds", DEFAULT_HOLD_SECONDS))
         self.settle_seconds = float(self.config.get("settle_seconds", DEFAULT_SETTLE_SECONDS))
@@ -201,7 +211,11 @@ class CalibratePositionHeadingExperiment:
                   f"heading_offset(+sign)={analysis['offset_pos']:+.4f}" if analysis['offset_pos'] is not None
                   else f"[{self.self_hostname}] leg target={target}: didn't move enough to measure direction")
             legs.append((target, analysis))
-            self._log_leg(target, analysis)
+            self._log("leg", target=target, position_axes=analysis["position_axes"],
+                       up_axis=analysis["up_axis"], slopes_mps=analysis["slopes"],
+                       r_squared=analysis["r_squared"], travel_speed_mps=analysis["travel_speed"],
+                       mean_raw_yaw=analysis["mean_raw_yaw"], yaw_std=analysis["yaw_std"],
+                       offset_pos=analysis["offset_pos"], offset_neg=analysis["offset_neg"])
 
         usable = [(t, a) for t, a in legs if a is not None and a["travel_speed"] > 1e-6]
         if not usable:
@@ -242,27 +256,38 @@ class CalibratePositionHeadingExperiment:
         else:
             print(f"    HEADING_OFFSET_RAD: no leg moved enough to measure a travel direction.")
 
-        if self.logger:
-            self.logger.log(
-                state={"recommended_position_axes": list(recommended_axes), "axes_agree": axes_agree,
-                       "recommended_motor_units_per_mps": recommended_units_per_mps,
-                       "heading_offset_mean_if_positive": offsets_pos and float(np.mean(offsets_pos)),
-                       "heading_offset_mean_if_negative": offsets_neg and float(np.mean(offsets_neg)),
-                       "n_legs_usable": len(usable), "n_legs_total": len(legs)},
-                command={"summary": True},
-            )
+        self._log("summary", position_axes=recommended_axes, axes_agree=axes_agree,
+                   recommended_units_per_mps=recommended_units_per_mps,
+                   offset_pos=float(np.mean(offsets_pos)) if offsets_pos else None,
+                   offset_neg=float(np.mean(offsets_neg)) if offsets_neg else None,
+                   n_legs_usable=len(usable), n_legs_total=len(legs))
 
         await self.robot.stop()
 
-    def _log_leg(self, target, analysis):
+    def _log(self, phase, target=None, position_axes=None, up_axis=None, slopes_mps=None,
+              r_squared=None, travel_speed_mps=None, mean_raw_yaw=None, yaw_std=None,
+              offset_pos=None, offset_neg=None, axes_agree=None, recommended_units_per_mps=None,
+              n_legs_usable=None, n_legs_total=None):
+        """Every call -- 'leg' (once per motor_targets entry) or 'summary' (once at the
+        end) -- MUST pass the exact same set of keys to logger.log(), even as None for
+        whatever a given phase doesn't have: SessionLogger.log() infers its CSV header
+        from the FIRST call's keys and indexes every later row against that same fixed
+        header, so a later call with a different key set raises a KeyError instead of
+        just writing blank cells. Mirrors calibrate_speed_experiment.py's _log()."""
         if not self.logger:
             return
         self.logger.log(
-            state={"position_axes": list(analysis["position_axes"]), "up_axis": analysis["up_axis"],
-                   "slopes_mps": analysis["slopes"].tolist(), "r_squared": analysis["r_squared"].tolist(),
-                   "travel_speed_mps": analysis["travel_speed"], "mean_raw_yaw": analysis["mean_raw_yaw"],
-                   "yaw_std": analysis["yaw_std"], "heading_offset_if_rotation_sign_positive": analysis["offset_pos"],
-                   "heading_offset_if_rotation_sign_negative": analysis["offset_neg"]},
+            state={"phase": phase,
+                   "position_axes": list(position_axes) if position_axes is not None else None,
+                   "up_axis": up_axis,
+                   "slopes_mps": slopes_mps.tolist() if slopes_mps is not None else None,
+                   "r_squared": r_squared.tolist() if r_squared is not None else None,
+                   "travel_speed_mps": travel_speed_mps, "mean_raw_yaw": mean_raw_yaw,
+                   "yaw_std": yaw_std,
+                   "heading_offset_if_rotation_sign_positive": offset_pos,
+                   "heading_offset_if_rotation_sign_negative": offset_neg,
+                   "axes_agree": axes_agree, "recommended_units_per_mps": recommended_units_per_mps,
+                   "n_legs_usable": n_legs_usable, "n_legs_total": n_legs_total},
             command={"motor_target": target},
         )
 
