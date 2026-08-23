@@ -35,7 +35,7 @@ tracking:
   # swarm_platform.controller.client.SwarmClient.start_tracking()). Only the 3 hosts this
   # trial actually uses are listed -- add more here if you change HOSTS in the launcher.
   hostname_map:
-    thymio-17: "RigidBody 22"
+    thymio-17: "RigidBody 27"
     thymio-18: "RigidBody 14"
     thymio-20: "RigidBody 21"
 
