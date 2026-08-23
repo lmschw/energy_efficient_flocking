@@ -31,6 +31,30 @@ def _wrap_to_pi(angle):
     return (angle + np.pi) % (2.0 * np.pi) - np.pi
 
 
+_warned_missing_offset_hosts = set()  # module-level: print the fallback warning once per
+                                       # hostname, not once per tick (this runs every
+                                       # CONTROL_TICK_SECONDS, so a per-call warning would
+                                       # flood the log within seconds).
+
+
+def _heading_offset_for(host):
+    """cfg.HEADING_OFFSET_RAD is per-robot (a dict), not one shared constant -- real
+    robots have disagreed by more than measurement noise would explain (see that
+    constant's comment in controller_config.py), most likely because their rigid bodies
+    weren't defined with the same 'front' convention in Motive. Falls back to
+    HEADING_OFFSET_RAD_DEFAULT (once-warned, not a crash) for any hostname not listed --
+    e.g. a new robot added to the fleet before its own calibration."""
+    if host in cfg.HEADING_OFFSET_RAD:
+        return cfg.HEADING_OFFSET_RAD[host]
+    if host not in _warned_missing_offset_hosts:
+        _warned_missing_offset_hosts.add(host)
+        print(f"[pose_utils] WARNING: no HEADING_OFFSET_RAD entry for '{host}' -- falling "
+              f"back to HEADING_OFFSET_RAD_DEFAULT ({cfg.HEADING_OFFSET_RAD_DEFAULT}). "
+              f"Calibrate this robot individually and add it to controller_config.py's "
+              f"HEADING_OFFSET_RAD dict.")
+    return cfg.HEADING_OFFSET_RAD_DEFAULT
+
+
 def poses_to_agents(poses, hostnames, self_hostname):
     """poses: dict hostname -> Pose, e.g. from `await robot.get_all_global_poses()`.
     hostnames: the full ordered list of every robot participating in this run -- must
@@ -54,6 +78,6 @@ def poses_to_agents(poses, hostnames, self_hostname):
             agents[i] = [1e4, 1e4, 0.0, cfg.BATTERY_SENSOR_PLACEHOLDER]
             continue
         x, y = pose.position[ax0], pose.position[ax1]
-        yaw = quaternion_to_yaw(*pose.orientation) * cfg.ROTATION_SIGN + cfg.HEADING_OFFSET_RAD
+        yaw = quaternion_to_yaw(*pose.orientation) * cfg.ROTATION_SIGN + _heading_offset_for(host)
         agents[i] = [x, y, _wrap_to_pi(yaw), cfg.BATTERY_SENSOR_PLACEHOLDER]
     return agents, self_index

@@ -84,20 +84,39 @@ MOTOR_UNITS_PER_MPS = 12652.30
 # timed run over a measured distance) and recompute this before trusting any distance-
 # or speed-based comparison against the simulation's numbers.
 
-HEADING_OFFSET_RAD = -2.8531
+HEADING_OFFSET_RAD_DEFAULT = -2.8531
 # UNVERIFIED: the yaw angle (after quaternion_to_yaw(), see pose_utils.py) OptiTrack
 # reports when a robot is physically oriented at this codebase's heading=0 (facing "+y"
 # in the simulation's convention -- see wrap_to_pi()/move() in
 # experiment/simulation_free_global_mod_2_LJ.py). Depends on your Motive ground-plane
-# calibration and how each rigid body's "front" was defined when you created it. Use
-# diagnostics/print_poses.py: point a robot at the sim's heading=0 direction, read its
-# raw yaw, and set this to minus that value.
+# calibration and how each rigid body's "front" was defined when you created it.
+
+HEADING_OFFSET_RAD = {
+    # "thymio-17": 0.0,
+    "thymio-18": -2.8531,
+    "thymio-20": -2.8531,
+}
+# PER-ROBOT, not one shared constant -- calibrate_position_heading_experiment.py's own
+# data showed real robots disagreeing by more than measurement noise would explain
+# (thymio-20 vs thymio-18 differed by ~0.37 rad, well over that script's own 0.15 rad
+# disagreement threshold), meaning their rigid bodies most likely weren't defined with
+# the same "front" convention in Motive -- there's no single correct shared value to
+# average toward. pose_utils.poses_to_agents() looks up each pose's own hostname here,
+# falling back to HEADING_OFFSET_RAD_DEFAULT (with a one-time warning, not a crash) for
+# any hostname not listed -- e.g. a new robot added to the fleet before it's been
+# individually calibrated. The values above are STILL the flawed calibration run's
+# numbers (from before the up-axis selection bug was fixed in
+# calibrate_position_heading_experiment.py) -- re-run that script and replace these
+# before trusting them; it now prints a ready-to-paste dict for this exact purpose.
 
 POSITION_AXES = (1, 2)
-# UNVERIFIED: which two of OptiTrack's (x, y, z) position components map to this
-# codebase's 2D ground-plane (x, y). Motive is commonly Y-up by default (ground plane =
-# X/Z, i.e. axes (0, 2)), but this is fully dependent on your specific Motive
-# calibration -- verify with diagnostics/print_poses.py, don't assume.
+# STALE, from the same flawed calibration run as HEADING_OFFSET_RAD above -- (1, 2)
+# implies axis 0 is "up", but this rig is confirmed Y-up (axis 1 is up), so this is
+# almost certainly wrong and should read (0, 2) once you re-run the fixed
+# calibrate_position_heading_experiment.py. Motive is commonly Y-up by default (ground
+# plane = X/Z, i.e. axes (0, 2)), but always verify against a real measurement rather
+# than assuming -- this is shared across all robots (a genuine platform-wide constant,
+# unlike HEADING_OFFSET_RAD), so unlike that one it does NOT need to be a per-robot dict.
 
 ROTATION_SIGN = 1.0
 # UNVERIFIED: +1.0 or -1.0. If the robot turns the wrong way in practice (spins away

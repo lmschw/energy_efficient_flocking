@@ -204,10 +204,16 @@ probably be wrong for your specific rig until you check them:
    ground plane. Motive is commonly Y-up by default (ground plane = X/Z, i.e. `(0, 2)`),
    but this depends entirely on your calibration.
 2. **`HEADING_OFFSET_RAD`** — the raw yaw OptiTrack reports when a robot is physically
-   oriented at this codebase's `heading=0`. There's no universal right answer here; what
-   matters is that it's consistent across every robot and matches whichever physical
-   direction you want the swarm to treat as "the goal direction" (recall: the trained
-   controller always migrates toward -x in its own frame).
+   oriented at this codebase's `heading=0`. **This one is a dict keyed by hostname, not
+   one shared constant** — real robots have disagreed by more than measurement noise
+   would explain, most likely because their rigid bodies weren't defined with the same
+   "front" convention in Motive. There's no universal right answer for any one robot's
+   value; what matters is that each robot's own offset is correct, and that together they
+   all agree on whichever physical direction the swarm should treat as "the goal
+   direction" (recall: the trained controller always migrates toward -x in its own
+   frame). A robot with no entry falls back to `HEADING_OFFSET_RAD_DEFAULT` with a
+   one-time warning printed by `pose_utils.py`, not a crash — but don't rely on that for
+   a robot you're actually deploying, only for one you haven't calibrated yet.
 3. **`ROTATION_SIGN`** — flip this (`1.0` ↔ `-1.0`) if a deployed robot turns the wrong
    way.
 4. **`MOTOR_UNITS_PER_MPS`** — the raw `motor.target` value per m/s of real speed.
@@ -226,11 +232,11 @@ host in that launcher's `HOSTS` list at once, drives each one straight for one a
 (`MOTOR_TARGETS = [300]`, `HOLD_SECONDS = 10.0` — edit those constants at the top of the
 launcher if you want a different target/duration), collects logs, and prints (1)-(4) all
 together: a per-robot table, POSITION_AXES/MOTOR_UNITS_PER_MPS recommendations aggregated
-across all robots (shared constants — one `controller_config.py` for every Pi), and
-HEADING_OFFSET_RAD both per-robot and aggregated (flagged if robots disagree by more than
-noise would explain — plausible if their rigid bodies weren't defined with the same
-"front" convention in Motive, unlike POSITION_AXES/MOTOR_UNITS_PER_MPS which are true
-platform-wide constants).
+across all robots (shared constants — one `controller_config.py` for every Pi), and a
+**ready-to-paste `HEADING_OFFSET_RAD = {...}` dict literal** (one per `ROTATION_SIGN`
+hypothesis — pick whichever matches your separately-observed `ROTATION_SIGN`), since that
+constant is per-robot rather than aggregated to one shared value (unlike
+POSITION_AXES/MOTOR_UNITS_PER_MPS, which are true platform-wide constants).
 
 **`MOTOR_TARGETS` defaults to ONE attempt, not a multi-point sweep, on purpose.** Real
 Thymios don't drive perfectly straight, and there's no way to drive a robot back to an

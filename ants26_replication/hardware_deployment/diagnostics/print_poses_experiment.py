@@ -10,12 +10,16 @@ How to calibrate:
    heading=0 -- "facing +y" in whichever 2D plane you decide POSITION_AXES selects. If
    you don't have an independent reference for that, an easier equivalent calibration:
    point the robot in whatever direction you want to DEFINE as heading=0 for your
-   experiments, note the raw yaw printed here, and set HEADING_OFFSET_RAD to minus that
+   experiments, note the raw yaw printed here, and set THIS ROBOT'S OWN entry in
+   controller_config.py's HEADING_OFFSET_RAD dict (keyed by its hostname) to minus that
    value -- the simulation's heading=0 is just a convention, what matters is that your
    real robots' heading=0 all agrees with each other and with "the goal direction" you
    want them walking toward (recall: the trained controller always walks toward -x in
    its own frame, so whichever physical direction you calibrate as heading=0 is the
-   direction the swarm will try to migrate away from).
+   direction the swarm will try to migrate away from). HEADING_OFFSET_RAD is per-robot,
+   not one shared constant -- real robots have disagreed by more than measurement noise
+   would explain (see that dict's comment in controller_config.py), so calibrate and set
+   each robot's entry separately rather than assuming one value works for all of them.
 3. Try both POSITION_AXES = (0, 1) and (0, 2) (and (1, 2) if neither looks right) --
    whichever pair produces (x, y) values that visibly change the way you'd expect as you
    physically move the robot around your tracked volume is the correct one for your
@@ -67,8 +71,11 @@ class PrintPosesExperiment:
                 if self.hostnames:
                     agents, self_index = poses_to_agents(poses, self.hostnames, self.self_hostname)
                     x, y, heading = agents[self_index, 0], agents[self_index, 1], agents[self_index, 2]
+                    applied_offset = cfg.HEADING_OFFSET_RAD.get(
+                        self.self_hostname, cfg.HEADING_OFFSET_RAD_DEFAULT)
                     line += (f" | with POSITION_AXES={cfg.POSITION_AXES}, "
-                             f"HEADING_OFFSET_RAD={cfg.HEADING_OFFSET_RAD}, "
+                             f"HEADING_OFFSET_RAD[{self.self_hostname}]={applied_offset} "
+                             f"(dict has {list(cfg.HEADING_OFFSET_RAD.keys())}), "
                              f"ROTATION_SIGN={cfg.ROTATION_SIGN} -> sim frame "
                              f"x={x:.3f} y={y:.3f} heading={heading:+.3f} rad")
                 print(line)
