@@ -1,0 +1,84 @@
+HARDWARE TRIAL RUNBOOK -- 3-agent Hebbian ABCD controller on real Thymios
+==========================================================================
+
+0. COMMIT & PUSH energy_efficient_flocking
+--------------------------------------------
+New/changed files needed on the Pis:
+  ants26_replication/hardware_deployment/swarm_project.yaml
+  ants26_replication/hardware_deployment/hebbian_save_battery_avoid_all_best.npy
+  ants26_replication/hardware_deployment/hebbian_swarm_experiment.py
+  ants26_replication/hardware_deployment/README.md
+Push to origin/main -- the Pis `git pull` this repo directly, nothing local
+matters until it's pushed.
+
+
+1. LOCAL DRY RUN (no hardware)
+--------------------------------------------
+  cd ants26_replication/hardware_deployment
+  python3 local_test_harness.py hebbian_save_battery_avoid_all_best.npy
+
+Look for "All checks passed." at the end.
+
+
+2. PHYSICAL / NETWORK SETUP
+--------------------------------------------
+- Power on thymio-15, thymio-16, thymio-17 and their Pis; confirm they're
+  reachable and registered with the coordinator.
+- Confirm Motive/OptiTrack is streaming and the rigid bodies
+  "RigidBody 19 / 15 / 20" are assigned to those three robots (per
+  swarm_project.yaml's hostname_map).
+- Run the three launcher scripts below from an environment where
+  swarm_platform is importable, e.g.:
+    cd /home/lilly/dev/thymio_swarm/thymio_swarm_platform
+    source .venv/bin/activate    # or however you normally activate it
+
+
+3. CALIBRATE POSITION AXES & HEADING OFFSET
+--------------------------------------------
+  python examples/hebbian_pose_calibration.py
+
+- In a second terminal, SSH into each Pi one at a time and run:
+    journalctl -u swarm-daemon.service -f
+  to watch its live printed poses.
+- Physically move the robot; note which two of OptiTrack's (x, y, z) change
+  the way you expect -> that's POSITION_AXES.
+- Point the robot at whichever direction you want as heading=0 (the
+  controller migrates toward -x in its own frame, i.e. away from
+  heading=0); read raw_yaw=... -> set HEADING_OFFSET_RAD to MINUS that
+  value.
+- Repeat for all 3 robots -- one shared controller_config.py is deployed to
+  every Pi.
+- Edit controller_config.py, commit + push, then type "s" in the
+  calibration script to stop, and optionally re-run to verify the printed
+  "sim frame" line now looks right.
+
+
+4. CALIBRATE SPEED
+--------------------------------------------
+  python examples/hebbian_speed_calibration.py
+
+- Give each of the 3 robots a clear ~2m straight runway with no crossing
+  paths.
+- It runs automatically, then prints a per-robot MOTOR_UNITS_PER_MPS and
+  the mean.
+- Update MOTOR_UNITS_PER_MPS in controller_config.py with that value,
+  commit + push.
+
+
+5. SANITY-CHECK ROTATION DIRECTION, THEN RUN THE REAL TRIAL
+--------------------------------------------
+  python examples/hebbian_swarm_trial.py
+
+- Runs for EXPERIMENT_DURATION_SECONDS = 120 by default (edit the constant
+  in that file to change it), with [p]ause [r]esume [s]top available.
+- Watch whether robots turn the expected way; if not, flip ROTATION_SIGN in
+  controller_config.py, commit + push, and re-run.
+- On stop, it collects and aggregates logs into
+  results/hebbian-swarm-3agent-run/processed/aggregated.csv.
+
+
+NOTE
+--------------------------------------------
+This genome was trained at n_agents=20, not 3, so don't be surprised if the
+behavior looks different from the paper's reported results -- that gap is
+disclosed in README.md's "Known open risks" section.

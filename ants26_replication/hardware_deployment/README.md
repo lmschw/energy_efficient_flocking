@@ -31,9 +31,9 @@ installed, and where its other example launchers already live.
 | `diagnostics/print_poses_experiment.py` | Calibration helper #1 (position axes / heading offset) -- deployed separately from the real controller (see Calibration below). |
 | `diagnostics/calibrate_speed_experiment.py` | Calibration helper #2 (`MOTOR_UNITS_PER_MPS`) -- drives a sweep of raw motor targets and measures real speed from OptiTrack position deltas (see Calibration below). |
 
-Controller-side launchers (in `thymio_swarm_platform/examples/`, not here):
-`hebbian_speed_calibration.py` (run first) and `hebbian_swarm_trial.py` (run after
-calibration). Both point `client.project()` at this repo's GitHub remote.
+Controller-side launchers (in `thymio_swarm_platform/examples/`, not here), run in this
+order: `hebbian_pose_calibration.py`, `hebbian_speed_calibration.py`,
+`hebbian_swarm_trial.py`. All three point `client.project()` at this repo's GitHub remote.
 
 ## Why this structure
 
@@ -236,11 +236,12 @@ nothing until it's pushed).
 2. Run `python local_test_harness.py [genome_path]` locally first — no hardware needed,
    validates the whole pipeline (shapes, bounds, missing-pose handling, and both battery
    modes if `scipy` is installed locally).
-3. Calibrate, in order: `diagnostics/print_poses_experiment.py` via a small ad hoc session
-   (position axes / heading, see above -- there's no dedicated launcher for this one since
-   it's meant to be watched interactively rather than automated), then
-   `thymio_swarm_platform/examples/hebbian_speed_calibration.py` (speed). Update
-   `controller_config.py`'s placeholders with what you measure.
+3. Calibrate, in order: `thymio_swarm_platform/examples/hebbian_pose_calibration.py`
+   (position axes / heading -- read live via `journalctl -u swarm-daemon.service -f` over
+   SSH on each Pi, see that script's docstring), then
+   `thymio_swarm_platform/examples/hebbian_speed_calibration.py` (speed, printed back to
+   the controller machine directly). Update `controller_config.py`'s placeholders with
+   what you measure.
 4. Commit and push this repo — the Pis pull it via `git`, they never see your local
    checkout — then run `thymio_swarm_platform/examples/hebbian_swarm_trial.py` (from an
    environment where `swarm_platform` is importable, e.g. its own venv). It uses
