@@ -78,11 +78,11 @@ MAX_MOTOR_TARGET = 500       # thymio_swarm_platform RobotConfig.max_motor (raw 
                              # NOT enforced by the platform's Robot.drive() itself)
 
 MOTOR_UNITS_PER_MPS = 4788.04
-# UNVERIFIED: assumes raw motor target 500 (the commonly-cited firmware ceiling) maps to
-# roughly this controller's own LINEAR_VEL_MAX = 0.2 m/s top speed. Measure your actual
-# Thymio's real-world speed at a given motor.target value (drive at a fixed target for a
-# timed run over a measured distance) and recompute this before trusting any distance-
-# or speed-based comparison against the simulation's numbers.
+# STILL STALE / DO NOT TRUST -- same flawed calibration run as HEADING_OFFSET_RAD above:
+# travel_speed is measured as hypot() over the (wrong) selected ground-plane axes, so
+# this number is corrupted too, not just the heading/axes values. Re-run calibration with
+# known_up_axis=1 set (see HEADING_OFFSET_RAD comment above) and replace this before
+# trusting any distance- or speed-based comparison against the simulation's numbers.
 
 HEADING_OFFSET_RAD_DEFAULT = -2.8531
 # UNVERIFIED: the yaw angle (after quaternion_to_yaw(), see pose_utils.py) OptiTrack
@@ -96,27 +96,31 @@ HEADING_OFFSET_RAD = {
     "thymio-20": -0.8783,
     "thymio-18": -2.6642,
 }
-# PER-ROBOT, not one shared constant -- calibrate_position_heading_experiment.py's own
-# data showed real robots disagreeing by more than measurement noise would explain
-# (thymio-20 vs thymio-18 differed by ~0.37 rad, well over that script's own 0.15 rad
-# disagreement threshold), meaning their rigid bodies most likely weren't defined with
-# the same "front" convention in Motive -- there's no single correct shared value to
-# average toward. pose_utils.poses_to_agents() looks up each pose's own hostname here,
-# falling back to HEADING_OFFSET_RAD_DEFAULT (with a one-time warning, not a crash) for
-# any hostname not listed -- e.g. a new robot added to the fleet before it's been
-# individually calibrated. The values above are STILL the flawed calibration run's
-# numbers (from before the up-axis selection bug was fixed in
-# calibrate_position_heading_experiment.py) -- re-run that script and replace these
-# before trusting them; it now prints a ready-to-paste dict for this exact purpose.
+# PER-ROBOT, not one shared constant -- pose_utils.poses_to_agents() looks up each pose's
+# own hostname here, falling back to HEADING_OFFSET_RAD_DEFAULT (with a one-time warning,
+# not a crash) for any hostname not listed -- e.g. a new robot added to the fleet before
+# it's been individually calibrated.
+#
+# STILL STALE / DO NOT TRUST -- these numbers are from a calibration run where up-axis
+# detection was WRONG for 2 of 3 robots (thymio-17 and thymio-20 both picked axis 2 as
+# "up" instead of the actual up axis, 1; only thymio-18 picked axis 0, also wrong -- see
+# calibration.txt). Since HEADING_OFFSET_RAD is derived from the travel bearing measured
+# in the (wrong) selected ground-plane axes, these 3 values are all corrupted, not just
+# POSITION_AXES below. calibrate_position_heading_experiment.py now supports a
+# known_up_axis override (see its docstring) specifically to stop this from recurring --
+# the controller-side launcher (examples/hebbian_position_heading_calibration.py in the
+# thymio_swarm_platform repo) now sets known_up_axis=1 (this rig's confirmed Y-up axis).
+# Re-run calibration with that fix in place and replace these three values before
+# trusting them.
 
-POSITION_AXES = (0,1)
-# STALE, from the same flawed calibration run as HEADING_OFFSET_RAD above -- (1, 2)
-# implies axis 0 is "up", but this rig is confirmed Y-up (axis 1 is up), so this is
-# almost certainly wrong and should read (0, 2) once you re-run the fixed
-# calibrate_position_heading_experiment.py. Motive is commonly Y-up by default (ground
-# plane = X/Z, i.e. axes (0, 2)), but always verify against a real measurement rather
-# than assuming -- this is shared across all robots (a genuine platform-wide constant,
-# unlike HEADING_OFFSET_RAD), so unlike that one it does NOT need to be a per-robot dict.
+POSITION_AXES = (0,2)
+# This is a deterministic consequence of the rig being confirmed Y-up (axis 1 is up),
+# not something that needs re-measuring: excluding axis 1 always leaves (0, 2), Motive's
+# usual X/Z ground plane. Fixed directly rather than left at the previous calibration
+# run's (wrong, disagreeing-between-robots) (0, 1) value -- see calibration.txt and the
+# HEADING_OFFSET_RAD comment above for why that run's up-axis detection was unreliable.
+# Shared across all robots (a genuine platform-wide constant, unlike HEADING_OFFSET_RAD),
+# so it does NOT need to be a per-robot dict.
 
 ROTATION_SIGN = 1.0
 # UNVERIFIED: +1.0 or -1.0. If the robot turns the wrong way in practice (spins away

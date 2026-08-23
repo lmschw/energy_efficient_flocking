@@ -11,8 +11,16 @@ manual approach this was built to replace).
 
 Deploy the same way as the real controller (see ../README.md), with
 config = {"self_hostname": "...", "motor_targets": [...], "hold_seconds": <float>,
-"settle_seconds": <float>} -- no genome_path or hostnames list needed, since this
-doesn't sense neighbors, just its own tracked pose.
+"settle_seconds": <float>, "known_up_axis": <0|1|2, optional>} -- no genome_path or
+hostnames list needed, since this doesn't sense neighbors, just its own tracked pose.
+
+known_up_axis: if you already know which raw OptiTrack axis is "up" (e.g. a confirmed
+Y-up Motive rig -- known_up_axis=1), pass it and this script will use it directly instead
+of trying to infer it from this drive's data. Prefer this whenever you can: real-hardware
+runs have shown per-robot R^2-based auto-detection disagreeing with each other AND with
+the known-correct axis, most likely because a robot's tracked marker pitches slightly
+under acceleration/deceleration -- a genuine (not noise-only) trend on the true up axis
+that defeats a fit-quality heuristic same as it defeats a raw-slope one.
 
 Why a single attempt by default: real Thymios don't drive perfectly straight, and this
 platform has no way to drive a robot back to an exact start position/heading (no wheel
@@ -32,7 +40,8 @@ What this CAN determine from a straight drive:
     the drive are the ground-plane axes; the ~constant one is "up" and gets excluded.
     If you do pass multiple motor_targets, this is computed per leg as a consistency
     check -- they should all agree; a mismatch means something's wrong (bad tracking,
-    non-straight motion, or drift between legs per the above).
+    non-straight motion, or drift between legs per the above). If known_up_axis is set,
+    this is not inferred at all -- POSITION_AXES is just the other two axes, always.
   - HEADING_OFFSET_RAD: this codebase's convention is heading=0 means "facing +y" in the
     (POSITION_AXES-selected) sim frame (see move() in
     initial_implementation/experiment/simulation_free_global_mod_2_LJ.py and
@@ -109,6 +118,9 @@ class CalibratePositionHeadingExperiment:
         self.motor_targets = list(self.config.get("motor_targets", DEFAULT_MOTOR_TARGETS))
         self.hold_seconds = float(self.config.get("hold_seconds", DEFAULT_HOLD_SECONDS))
         self.settle_seconds = float(self.config.get("settle_seconds", DEFAULT_SETTLE_SECONDS))
+        self.known_up_axis = self.config.get("known_up_axis")
+        if self.known_up_axis is not None and self.known_up_axis not in (0, 1, 2):
+            raise ValueError(f"config['known_up_axis'] must be 0, 1, or 2 -- got {self.known_up_axis!r}.")
 
     def _own_pose(self, poses):
         return poses.get(self.self_hostname)
@@ -136,11 +148,22 @@ class CalibratePositionHeadingExperiment:
         return samples
 
     @staticmethod
-    def _analyze_leg(drive_samples):
-        """Fits one leg's continuous pose samples: which raw axis is 'up', the swarm's
-        measured travel speed/bearing in the other two, and the resulting
-        HEADING_OFFSET_RAD candidates. Returns None if there's not enough data to trust
-        a fit. Pure function (no self.*) so it's trivially unit-testable."""
+    def _analyze_leg(drive_samples, known_up_axis=None):
+        """Fits one leg's continuous pose samples: which raw axis is 'up' (unless
+        known_up_axis is given -- see below), the swarm's measured travel speed/bearing
+        in the other two, and the resulting HEADING_OFFSET_RAD candidates. Returns None
+        if there's not enough data to trust a fit. Pure function (no self.*) so it's
+        trivially unit-testable.
+
+        known_up_axis: if given (0, 1, or 2), SKIPS auto-detection entirely and uses
+        this axis as "up". Use this whenever you already know your Motive calibration
+        (e.g. a confirmed Y-up rig -- known_up_axis=1) rather than trusting inference
+        from one drive's data: R^2-based inference (see the else branch) assumes the up
+        axis is pure noise with no real trend, which breaks if a robot's marker pitches
+        systematically under acceleration/deceleration -- a real, confirmed failure mode
+        on this project's own hardware (three robots' independent auto-detected axes
+        didn't even agree with each other, let alone with the known-correct answer).
+        """
         if len(drive_samples) < 3:
             return None
 
@@ -158,17 +181,17 @@ class CalibratePositionHeadingExperiment:
             slopes[axis] = slope
             r_squared[axis] = 1.0 - ss_res / ss_tot if ss_tot > 1e-9 else 0.0
 
-        # Pick "up" by WORST fit quality (R^2), not smallest raw slope. Raw slope alone
-        # is the wrong criterion: if a robot happens to drive mostly along one ground
-        # axis with little component along the other, that other (real, ground-plane)
-        # axis can have a smaller slope than noisy vertical jitter on the true up axis --
-        # this is a confirmed real failure mode, not a hypothetical (a real run picked
-        # the horizontal axis 0 as "up" over the true up axis 1 this way, corrupting
-        # POSITION_AXES/HEADING_OFFSET_RAD/MOTOR_UNITS_PER_MPS all at once, since the
-        # true up axis's jitter got included as part of the "measured travel speed").
-        # R^2 doesn't have this problem: real motion (even slow, even shallow-angled)
-        # fits a line far better than up/down jitter with no systematic trend does.
-        up_axis = int(np.argmin(r_squared))
+        if known_up_axis is not None:
+            up_axis = known_up_axis
+        else:
+            # Fallback auto-detection: pick "up" by WORST fit quality (R^2), not
+            # smallest raw slope -- raw slope alone is the wrong criterion, since a
+            # robot driving mostly along one ground axis can leave that axis's slope
+            # smaller than noisy jitter on the true up axis. R^2 catches PURE JITTER
+            # correctly, but NOT a systematic pitch/tilt trend correlated with
+            # acceleration -- pass known_up_axis instead whenever you can, per the
+            # docstring above.
+            up_axis = int(np.argmin(r_squared))
         position_axes = tuple(sorted(a for a in range(3) if a != up_axis))
         ax0, ax1 = position_axes
 
@@ -222,7 +245,7 @@ class CalibratePositionHeadingExperiment:
             await self.robot.stop()
             await asyncio.sleep(self.settle_seconds)  # let it fully stop before the next leg
 
-            analysis = self._analyze_leg(drive_samples)
+            analysis = self._analyze_leg(drive_samples, known_up_axis=self.known_up_axis)
             if analysis is None:
                 print(f"[{self.self_hostname}] leg target={target}: too few samples "
                       f"({len(drive_samples)}) -- skipping this leg.")
@@ -234,17 +257,22 @@ class CalibratePositionHeadingExperiment:
                   f"position_axes={analysis['position_axes']}, "
                   f"heading_offset(+sign)={analysis['offset_pos']:+.4f}" if analysis['offset_pos'] is not None
                   else f"[{self.self_hostname}] leg target={target}: didn't move enough to measure direction")
-            print(f"    per-axis R^2 (fit quality): axis0={r2[0]:.3f} axis1={r2[1]:.3f} axis2={r2[2]:.3f}"
-                  f"  (up_axis={analysis['up_axis']} should be the clear outlier -- low, "
-                  f"well below the other two)")
-            r2_sorted = np.sort(r2)
-            confidence_margin = r2_sorted[1] - r2_sorted[0]  # worst vs. second-worst
-            if confidence_margin < 0.2:
-                print(f"    WARNING: up-axis choice is not confident (R^2 margin between "
-                      f"worst and second-worst axis is only {confidence_margin:.3f}) -- the "
-                      f"robot may not have driven straight/far enough, or two axes are "
-                      f"similarly noisy. Don't trust POSITION_AXES from this leg alone; "
-                      f"re-run with a longer/straighter runway.")
+            if self.known_up_axis is not None:
+                print(f"    per-axis R^2 (fit quality, informational only -- up_axis="
+                      f"{analysis['up_axis']} was fixed via known_up_axis, not chosen from "
+                      f"this data): axis0={r2[0]:.3f} axis1={r2[1]:.3f} axis2={r2[2]:.3f}")
+            else:
+                print(f"    per-axis R^2 (fit quality): axis0={r2[0]:.3f} axis1={r2[1]:.3f} axis2={r2[2]:.3f}"
+                      f"  (up_axis={analysis['up_axis']} should be the clear outlier -- low, "
+                      f"well below the other two)")
+                r2_sorted = np.sort(r2)
+                confidence_margin = r2_sorted[1] - r2_sorted[0]  # worst vs. second-worst
+                if confidence_margin < 0.2:
+                    print(f"    WARNING: up-axis choice is not confident (R^2 margin between "
+                          f"worst and second-worst axis is only {confidence_margin:.3f}) -- the "
+                          f"robot may not have driven straight/far enough, or two axes are "
+                          f"similarly noisy. Don't trust POSITION_AXES from this leg alone; "
+                          f"re-run with a longer/straighter runway.")
             legs.append((target, analysis))
             self._log("leg", target=target, position_axes=analysis["position_axes"],
                        up_axis=analysis["up_axis"], slopes_mps=analysis["slopes"],
