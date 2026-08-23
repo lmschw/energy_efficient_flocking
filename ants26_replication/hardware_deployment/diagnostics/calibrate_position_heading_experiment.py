@@ -158,7 +158,17 @@ class CalibratePositionHeadingExperiment:
             slopes[axis] = slope
             r_squared[axis] = 1.0 - ss_res / ss_tot if ss_tot > 1e-9 else 0.0
 
-        up_axis = int(np.argmin(np.abs(slopes)))
+        # Pick "up" by WORST fit quality (R^2), not smallest raw slope. Raw slope alone
+        # is the wrong criterion: if a robot happens to drive mostly along one ground
+        # axis with little component along the other, that other (real, ground-plane)
+        # axis can have a smaller slope than noisy vertical jitter on the true up axis --
+        # this is a confirmed real failure mode, not a hypothetical (a real run picked
+        # the horizontal axis 0 as "up" over the true up axis 1 this way, corrupting
+        # POSITION_AXES/HEADING_OFFSET_RAD/MOTOR_UNITS_PER_MPS all at once, since the
+        # true up axis's jitter got included as part of the "measured travel speed").
+        # R^2 doesn't have this problem: real motion (even slow, even shallow-angled)
+        # fits a line far better than up/down jitter with no systematic trend does.
+        up_axis = int(np.argmin(r_squared))
         position_axes = tuple(sorted(a for a in range(3) if a != up_axis))
         ax0, ax1 = position_axes
 
@@ -219,10 +229,22 @@ class CalibratePositionHeadingExperiment:
                 legs.append((target, None))
                 continue
 
+            r2 = analysis["r_squared"]
             print(f"[{self.self_hostname}] leg target={target}: speed={analysis['travel_speed']:.4f} m/s, "
                   f"position_axes={analysis['position_axes']}, "
                   f"heading_offset(+sign)={analysis['offset_pos']:+.4f}" if analysis['offset_pos'] is not None
                   else f"[{self.self_hostname}] leg target={target}: didn't move enough to measure direction")
+            print(f"    per-axis R^2 (fit quality): axis0={r2[0]:.3f} axis1={r2[1]:.3f} axis2={r2[2]:.3f}"
+                  f"  (up_axis={analysis['up_axis']} should be the clear outlier -- low, "
+                  f"well below the other two)")
+            r2_sorted = np.sort(r2)
+            confidence_margin = r2_sorted[1] - r2_sorted[0]  # worst vs. second-worst
+            if confidence_margin < 0.2:
+                print(f"    WARNING: up-axis choice is not confident (R^2 margin between "
+                      f"worst and second-worst axis is only {confidence_margin:.3f}) -- the "
+                      f"robot may not have driven straight/far enough, or two axes are "
+                      f"similarly noisy. Don't trust POSITION_AXES from this leg alone; "
+                      f"re-run with a longer/straighter runway.")
             legs.append((target, analysis))
             self._log("leg", target=target, position_axes=analysis["position_axes"],
                        up_axis=analysis["up_axis"], slopes_mps=analysis["slopes"],
