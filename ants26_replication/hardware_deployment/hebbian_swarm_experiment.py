@@ -30,6 +30,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import numpy as np
 
 import controller_config as cfg
+import wind_battery_model
 from sensor_model import get_sensor_data
 from hebbian_controller import init_weights, hebbian_step, unflatten_abcd
 from pose_utils import poses_to_agents
@@ -69,17 +70,10 @@ class HebbianSwarmExperiment:
                                      # needs (no wheel encoders exist on this platform).
         self._last_w = None         # commanded angular velocity that was actually active
                                      # over the interval since _prev_position was recorded.
-        self._wind_battery_model = None
-        if cfg.BATTERY_MODE == "simulated":
-            try:
-                import wind_battery_model
-            except ModuleNotFoundError as exc:
-                raise ModuleNotFoundError(
-                    "controller_config.BATTERY_MODE == 'simulated' requires scipy "
-                    "(wind_battery_model.py uses scipy.signal.convolve2d) -- "
-                    "pip install scipy on this Pi, or set BATTERY_MODE = 'none'."
-                ) from exc
-            self._wind_battery_model = wind_battery_model
+        # wind_battery_model has no extra dependencies beyond numpy (already required
+        # regardless of BATTERY_MODE), so it's imported unconditionally at the top of
+        # this file -- no lazy-import/try-except needed here anymore.
+        self._wind_battery_model = wind_battery_model if cfg.BATTERY_MODE == "simulated" else None
 
     @staticmethod
     def _resolve_genome_path(genome_path):

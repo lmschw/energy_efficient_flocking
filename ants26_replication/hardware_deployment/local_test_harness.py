@@ -90,7 +90,7 @@ async def main():
     v, w, left, right = await experiment2._tick()
     print(f"  -> ran fine with a missing neighbor: v={v:.4f}, w={w:.4f}")
 
-    print("\nTesting BATTERY_MODE='simulated' (requires scipy)...")
+    print("\nTesting BATTERY_MODE='simulated'...")
     cfg.BATTERY_MODE = "simulated"
     try:
         poses3 = _make_test_poses()
@@ -106,9 +106,6 @@ async def main():
         assert all(b <= cfg.INITIAL_BATTERY + 1e-9 for b in battery_trace), "battery exceeded starting value"
         assert battery_trace[-1] < battery_trace[0], "battery should have drained over 5 moving ticks"
         print("  simulated battery mode OK -- battery drained monotonically as expected.")
-    except ModuleNotFoundError as exc:
-        print(f"  SKIPPED locally ({exc}) -- fine off-hardware; wind_battery_model.py is "
-              f"only imported when BATTERY_MODE == 'simulated' is actually selected.")
     finally:
         cfg.BATTERY_MODE = "none"
 

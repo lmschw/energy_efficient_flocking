@@ -14,34 +14,58 @@ hebbian_swarm_experiment.py). Disclose this choice explicitly in any writeup: th
 reported battery is a physically-modeled software quantity, not a measurement of real
 power draw.
 
-Requires scipy -- only this module does, only imported when BATTERY_MODE == "simulated"
-(see hebbian_swarm_experiment.py's lazy import), so it's not a dependency otherwise.
+No scipy dependency: the only place the original port used it was
+scipy.signal.convolve2d, smoothing with a 2D kernel exp(-decay*(|dx|+|dy|)). That kernel
+is separable -- exp(-decay*(|dx|+|dy|)) = exp(-decay*|dx|) * exp(-decay*|dy|) -- so a 2D
+convolution against it is mathematically IDENTICAL to two 1D convolutions in sequence
+(standard separable-convolution identity, not an approximation), which pure numpy can do
+directly. Verified numerically against the original scipy-based implementation (exact
+match to floating-point precision) before swapping this in.
 """
 from functools import lru_cache
 
 import numpy as np
-from scipy.signal import convolve2d
 
 import controller_config as cfg
 
 
 @lru_cache(maxsize=None)
-def _exp_kernel(Nx, Ny, x_smoothing, y_smoothing, decay):
-    """Mirrors the exp(-decay*(|dx|+|dy|)) kernel built in RayTraceCircularRobots.m."""
-    Kx = 2 * (Nx // x_smoothing) + 1
-    Ky = 2 * (Ny // y_smoothing) + 1
-    xg, yg = np.meshgrid(np.arange(1, Kx + 1), np.arange(1, Ky + 1))
-    cx = np.ceil(Kx / 2.0)
-    cy = np.ceil(Ky / 2.0)
-    kernel = np.exp(-decay * (np.abs(xg - cx) + np.abs(yg - cy)))
+def _exp_kernel_1d(K, decay):
+    """One axis of the separable exp(-decay*(|dx|+|dy|)) kernel built in
+    RayTraceCircularRobots.m -- exp(-decay*|i-c|), normalized to sum to 1 (matching the
+    original 2D kernel's normalization: since the 2D kernel is the outer product of two
+    of these, and each sums to 1, their product also sums to 1)."""
+    c = np.ceil(K / 2.0)
+    i = np.arange(1, K + 1)
+    kernel = np.exp(-decay * np.abs(i - c))
     return kernel / kernel.sum()
 
 
-def _replicate_smooth(P, kernel):
-    """Mirrors padarray(P, ..., 'replicate', 'both') + conv2(..., 'valid')."""
-    py, px = kernel.shape[0] // 2, kernel.shape[1] // 2
+def _convolve1d_valid(arr, kernel, axis):
+    """'valid'-mode 1D convolution of `arr` against `kernel` along `axis`, fully
+    vectorized over the other axis (no per-row/column Python looping). Since every
+    kernel this module uses is palindromic (symmetric around its center -- true by
+    construction for _exp_kernel_1d), convolution and correlation coincide here, so this
+    can correlate directly instead of flipping the kernel first."""
+    windows = np.lib.stride_tricks.sliding_window_view(arr, kernel.shape[0], axis=axis)
+    return np.tensordot(windows, kernel, axes=([-1], [0]))
+
+
+def _replicate_smooth(P, kernel_y, kernel_x):
+    """Mirrors padarray(P, ..., 'replicate', 'both') + conv2(..., 'valid') for the
+    separable exponential kernel, as two 1D convolutions -- see module docstring."""
+    py, px = kernel_y.shape[0] // 2, kernel_x.shape[0] // 2
     Ppad = np.pad(P, ((py, py), (px, px)), mode='edge')
-    return convolve2d(Ppad, kernel, mode='valid')
+    smoothed_rows = _convolve1d_valid(Ppad, kernel_x, axis=1)
+    return _convolve1d_valid(smoothed_rows, kernel_y, axis=0)
+
+
+def _smoothing_kernels(Nx, Ny, x_smoothing, y_smoothing, decay):
+    """The (kernel_y, kernel_x) pair for one smoothing pass -- same Kx/Ky sizing as the
+    original 2D _exp_kernel (RayTraceCircularRobots.m)."""
+    Kx = 2 * (Nx // x_smoothing) + 1
+    Ky = 2 * (Ny // y_smoothing) + 1
+    return _exp_kernel_1d(Ky, decay), _exp_kernel_1d(Kx, decay)
 
 
 def RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny):
@@ -96,7 +120,7 @@ def RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny):
         gap = Uinf - Pprev[stillOut]
         P[stillOut, i] = np.minimum(Uinf, Pprev[stillOut] + gap * recovery_rate * dx)
 
-    Psm = _replicate_smooth(P, _exp_kernel(Nx, Ny, x_smoothing1, y_smoothing1, alpha))
+    Psm = _replicate_smooth(P, *_smoothing_kernels(Nx, Ny, x_smoothing1, y_smoothing1, alpha))
 
     thr_ok = Uinf - cfg.WAKE_THR_OK_DELTA
     okMask = Psm >= thr_ok
@@ -114,7 +138,7 @@ def RayTraceCircularRobots(agents, wind_rad, Uinf, xRange, yRange, Nx, Ny):
     powerDef = (Psm / 100.0) ** wallScale
     Psm = np.maximum(min_power_y, Psm * powerDef)
 
-    powerValsSmoothed = _replicate_smooth(Psm, _exp_kernel(Nx, Ny, x_smoothing2, y_smoothing2, beta))
+    powerValsSmoothed = _replicate_smooth(Psm, *_smoothing_kernels(Nx, Ny, x_smoothing2, y_smoothing2, beta))
 
     powerVals = powerValsSmoothed.T  # Nx x Ny, matching the convention dragforce expects
     return yVals, xVals, powerVals

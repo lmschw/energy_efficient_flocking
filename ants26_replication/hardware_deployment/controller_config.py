@@ -41,8 +41,9 @@ ANGULAR_VEL_MAX = math.pi / 5  # rad/s
 #   because you can't generate a real, uniform headwind without a wind tunnel -- the wind
 #   exposure each robot experiences is instead *modeled*, from the swarm's real relative
 #   positions, exactly as during training. Deploy a battery-AWARE (non-`_nosensor`) genome
-#   with this mode. Requires scipy (see wind_battery_model.py) -- lazily imported only
-#   when this mode is selected, so it's not a dependency otherwise.
+#   with this mode. No extra dependencies beyond numpy (already required regardless of
+#   BATTERY_MODE) -- wind_battery_model.py's smoothing step used to need scipy, replaced
+#   with an exact pure-numpy equivalent (the kernel is separable; see that file).
 #
 # Whichever mode you use, if it's "simulated": disclose this in any writeup. The reported
 # battery is a physically-modeled software quantity computed from real robot positions,

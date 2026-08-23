@@ -26,7 +26,7 @@ actually installed, and where its other example launchers already live.
 | `pose_utils.py` | Converts OptiTrack poses into the `[x, y, heading, battery]` array format the two files above expect. **This is the only real translation layer** between simulation and hardware. |
 | `motor_utils.py` | Converts the controller's `(v, w)` output into raw `Robot.drive(left, right)` motor targets. |
 | `hebbian_swarm_experiment.py` | The actual experiment class matching the platform's contract (see below). |
-| `wind_battery_model.py` | Optional: computes a *simulated* battery level from real robot positions -- ported verbatim from the simulation's wind/drag/battery equations. Only imported when `BATTERY_MODE = "simulated"` (see Battery below). Requires `scipy`. |
+| `wind_battery_model.py` | Optional: computes a *simulated* battery level from real robot positions -- ported verbatim from the simulation's wind/drag/battery equations, except its smoothing step (originally `scipy.signal.convolve2d`) is now an exact pure-numpy equivalent (the kernel is separable), so it has no extra dependencies beyond numpy. Only imported when `BATTERY_MODE = "simulated"` (see Battery below). |
 | `hebbian_save_battery_avoid_all_best.npy` | The deployed genome -- a copy of `../hebbian_results_v2/hebbian_save_battery_avoid_all_best.npy` (see "Current trial config"). Kept flat here, not referenced from its original location, for the same reason as `swarm_project.yaml`'s note above. |
 | `local_test_harness.py` | Validates the whole pipeline with fake robot/pose objects -- **run this before touching real hardware**, since the platform itself has no dry-run mode at all. |
 | `diagnostics/calibrate_position_heading_experiment.py` | **Calibration helper (current).** Sweeps a series of straight-line drives and derives `POSITION_AXES`, `HEADING_OFFSET_RAD`, AND `MOTOR_UNITS_PER_MPS` all from the same OptiTrack data -- see Calibration below. Supersedes the two files below (kept, not deleted). |
@@ -122,11 +122,16 @@ active over that interval, matching the simulation's own `vel_actual` convention
 zero. **Deploy a battery-aware (non-`_nosensor`) genome** with this mode — it now has a
 real, physically-modeled signal to respond to, rather than a constant.
 
-This mode requires `scipy` (only `wind_battery_model.py` does; it's lazily imported only
-when this mode is selected, so it's not a dependency of the rest of the package). It has
-not been profiled on real Pi hardware — the wake computation is an O(`NX`) loop plus two
-2D convolutions run once per control tick, and a Pi is much slower than a dev laptop, so
-check it actually finishes within `CONTROL_TICK_SECONDS` before trusting a real run; drop
+This mode has no extra dependencies beyond numpy — `wind_battery_model.py`'s smoothing
+step originally used `scipy.signal.convolve2d`, replaced with an exact pure-numpy
+equivalent (the exponential kernel is separable into two 1D kernels, verified numerically
+against the original scipy-based version to floating-point precision before swapping it
+in). It has NOT been profiled on real Pi hardware, though — the wake computation is an
+O(`NX`) loop plus two smoothing passes run once per control tick, and a Pi is much slower
+than a dev laptop; a dev-machine timing came out to ~9ms per call at the default
+`NX=NY=200` (500ms `CONTROL_TICK_SECONDS` budget), which leaves real headroom even for a
+Pi several times slower, but that is not the same as an actual Pi measurement — check it
+actually finishes within budget before trusting a real run, and drop
 `controller_config.NX`/`NY` (e.g. to 50, matching `optimize_hebbian.py --wind-grid 50` if
 that's the resolution you trained against) if it can't keep up.
 
@@ -160,7 +165,8 @@ effective learning dynamics. This also happens to match OptiTrack's own ~2 Hz pu
   deliberate choice over the untested-at-scale `n=4`/`n=7` variants.
 - **`BATTERY_MODE = "simulated"`** -- this genome was trained WITH the battery sensor
   (`battery_sensor=True` in its history JSON), so `"none"` mode would silently feed it a
-  placeholder input it never learned to use. Requires `scipy` on each Pi.
+  placeholder input it never learned to use. No extra dependencies to install on the Pis
+  for this (see Battery above).
 - **Hosts:** `thymio-17`, `thymio-18`, `thymio-20` -- their OptiTrack rigid-body mappings
   are in `/swarm_project.yaml` (repo root). If you change `HOSTS`, update both that file's
   `hostname_map` and the `HOSTS` list in all three
@@ -286,7 +292,7 @@ Pi side -- your local checkout being up to date changes nothing until it's pushe
    `thymio_swarm_platform/examples/hebbian_swarm_trial.py` at its basename.
 2. Run `python local_test_harness.py [genome_path]` locally first — no hardware needed,
    validates the whole pipeline (shapes, bounds, missing-pose handling, and both battery
-   modes if `scipy` is installed locally).
+   modes).
 3. Calibrate: `thymio_swarm_platform/examples/hebbian_position_heading_calibration.py`
    (position axes, heading offset, AND speed, all from one straight-line-drive sweep,
    printed back to the controller machine directly -- see Calibration above). Update
