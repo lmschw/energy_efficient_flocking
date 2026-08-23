@@ -180,19 +180,26 @@ HEBBIAN_EFF_DISTANCE_WEIGHT = 8.0
 
 # Replaces BOTH the wall-collision fitness penalty (original 3-stage curriculum) AND the
 # wall-proximity sensor input (wall_sensor_variant/) with a single, much simpler idea:
-# directly reward staying on a straight line toward the goal (mean |y_final - y_initial|
-# across agents, penalized), so wall-approach never becomes an issue in the first place,
-# instead of trying to learn to sense or react to the boundary at all. Real data motivated
-# this: wall_sensor_variant's added sensory/parameter complexity (880->1040 params) came
-# with a measurable COHESION regression (mean pairwise inter-agent distance growing 2-3x
-# over an episode, vs. shrinking over the original 3-stage genome) -- speculatively because
-# cohesion was only ever an indirect, emergent side effect of battery-saving (drafting),
-# and CMA-ES traded it off against the newly-easy-to-satisfy direct wall-avoidance signal.
-# This variant tests whether a dense, direct "go straight" reward can prevent wall-approach
-# without adding inputs/parameters or competing with the (also indirect) cohesion-via-
-# drafting incentive. Started at the same value as HEBBIAN_EFF_DISTANCE_WEIGHT as a
-# reasoned default (comparable scale to the distance reward it's meant to balance against,
-# not independently tuned) -- validate before trusting, like every other weight here.
+# directly reward staying on a straight line toward the goal, so wall-approach never
+# becomes an issue in the first place, instead of trying to learn to sense or react to
+# the boundary at all. Real data motivated this: wall_sensor_variant's added sensory/
+# parameter complexity (880->1040 params) came with a measurable COHESION regression
+# (mean pairwise inter-agent distance growing 2-3x over an episode, vs. shrinking over
+# the original 3-stage genome) -- speculatively because cohesion was only ever an
+# indirect, emergent side effect of battery-saving (drafting), and CMA-ES traded it off
+# against the newly-easy-to-satisfy direct wall-avoidance signal.
+#
+# y_drift is the WORST agent's |y_final - y_initial|, not a mean -- a first attempt
+# using the mean failed: CMA-ES satisfied "low average drift" by keeping some agents
+# near the spawn line while letting others still drift straight into a wall (real data:
+# 3/7 agents hard-pinned at the exact wall-clamp value, 2 others drifted the opposite
+# way, yet mean |y_drift| looked merely "moderate" -- the swarm had literally split into
+# subgroups, which is also what was tanking cohesion). Penalizing the worst agent means
+# a single wall-hugger tanks the whole candidate's fitness, not just nudges an average.
+#
+# Started at the same value as HEBBIAN_EFF_DISTANCE_WEIGHT as a reasoned default
+# (comparable scale to the distance reward it's meant to balance against, not
+# independently tuned) -- validate before trusting, like every other weight here.
 HEBBIAN_STRAIGHTNESS_WEIGHT = 8.0
 
 # =====================================================================================

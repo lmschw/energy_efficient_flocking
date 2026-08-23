@@ -47,6 +47,9 @@ experiments:
   calibrate_speed:
     class: ants26_replication.hardware_deployment.diagnostics.calibrate_speed_experiment.CalibrateSpeedExperiment
     tracking: true
+  calibrate_position_heading:
+    class: ants26_replication.hardware_deployment.diagnostics.calibrate_position_heading_experiment.CalibratePositionHeadingExperiment
+    tracking: true
   print_poses:
     class: ants26_replication.hardware_deployment.diagnostics.print_poses_experiment.PrintPosesExperiment
     tracking: true

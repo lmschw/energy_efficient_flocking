@@ -115,10 +115,12 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     Returns (dist_travelled, average_batt, collision_time, wall_collision_time, y_drift
     [, telemetry]). wall_collision_time is still computed/returned for diagnostics (is
     the swarm still approaching the boundary?) but is NOT part of stage_fitness() in this
-    variant -- see config.HEBBIAN_STRAIGHTNESS_WEIGHT. y_drift is the mean absolute
-    y-displacement (|y_final - y_initial|) across agents -- this variant's replacement
-    for wall-avoidance: a swarm that stays near its spawn y-line structurally can't drift
-    into a y-wall, without needing to sense or react to the boundary at all. telemetry
+    variant -- see config.HEBBIAN_STRAIGHTNESS_WEIGHT. y_drift is the WORST-agent absolute
+    y-displacement (max over agents of |y_final - y_initial|), not a mean -- a mean lets
+    some agents stay near the spawn line while others still drift into a wall (real data
+    showed exactly that). This variant's replacement for wall-avoidance: a swarm where
+    EVERY agent stays near its spawn y-line structurally can't drift into a y-wall,
+    without needing to sense or react to the boundary at all. telemetry
     (only if record_trajectory/record_battery/record_wind_exposure) is a dict with
     "positions" ((n_steps, n_agents, 2) or None), "battery" ((n_steps, n_agents) or
     None), and "wind_pct" ((n_steps, n_agents) or None).
@@ -194,7 +196,12 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     dist_travelled = -np.mean(agents[:, 0])
     collision_time = pair_collision_counter * dt
     wall_collision_time = wall_collision_counter * dt
-    y_drift = np.mean(np.abs(agents[:, 1] - y_start))
+    # max, not mean: a mean lets CMA-ES satisfy "low average drift" by having some
+    # agents barely move in y while others still drift straight into a wall -- real
+    # data showed exactly that (3/7 agents hard-pinned at the wall clamp value while
+    # 2 others drifted the opposite way, yet mean |y_drift| looked merely "moderate").
+    # Penalizing the worst agent means a single wall-hugger tanks the whole candidate.
+    y_drift = np.max(np.abs(agents[:, 1] - y_start))
 
     if record_trajectory or record_battery or record_wind_exposure:
         telemetry = {
