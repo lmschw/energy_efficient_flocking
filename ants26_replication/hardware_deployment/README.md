@@ -216,15 +216,25 @@ python hebbian_position_heading_calibration.py
 ```
 
 This deploys `calibrate_position_heading` (registered in `/swarm_project.yaml`) to every
-host in that launcher's `HOSTS` list at once, sweeps a series of straight-line drives
-(`MOTOR_TARGETS = [100, 200, 300, 400, 500]`, `HOLD_SECONDS = 10.0` each — edit those
-constants at the top of the launcher if you want a shorter/longer sweep), collects logs,
-and prints (1)-(4) all together: a per-robot table, POSITION_AXES/MOTOR_UNITS_PER_MPS
-recommendations aggregated across all robots (shared constants — one
-`controller_config.py` for every Pi), and HEADING_OFFSET_RAD both per-robot and
-aggregated (flagged if robots disagree by more than noise would explain — plausible if
-their rigid bodies weren't defined with the same "front" convention in Motive, unlike
-POSITION_AXES/MOTOR_UNITS_PER_MPS which are true platform-wide constants).
+host in that launcher's `HOSTS` list at once, drives each one straight for one attempt
+(`MOTOR_TARGETS = [300]`, `HOLD_SECONDS = 10.0` — edit those constants at the top of the
+launcher if you want a different target/duration), collects logs, and prints (1)-(4) all
+together: a per-robot table, POSITION_AXES/MOTOR_UNITS_PER_MPS recommendations aggregated
+across all robots (shared constants — one `controller_config.py` for every Pi), and
+HEADING_OFFSET_RAD both per-robot and aggregated (flagged if robots disagree by more than
+noise would explain — plausible if their rigid bodies weren't defined with the same
+"front" convention in Motive, unlike POSITION_AXES/MOTOR_UNITS_PER_MPS which are true
+platform-wide constants).
+
+**`MOTOR_TARGETS` defaults to ONE attempt, not a multi-point sweep, on purpose.** Real
+Thymios don't drive perfectly straight, and there's no way to drive a robot back to an
+exact start position/heading between legs on this platform (no wheel odometry, no
+closed-loop control at all). A multi-leg sweep doesn't reset between legs, so one
+bad/curved leg physically displaces every leg after it — it derails the calibration
+rather than improving it. **If a run looks bad** (check the R²/yaw-std warnings it
+prints), the fix is to manually put the robot back at its start position and re-run the
+same single-attempt launcher again — not to add more targets and hope a sweep averages
+it out.
 
 **Give every robot a clear, straight, obstacle-free runway before starting** — a couple
 of meters, with no two robots' runways crossing (they calibrate independently and don't

@@ -1,35 +1,48 @@
-"""Position/heading/speed calibration experiment -- NOT the real controller. Sweeps a
-series of straight-line drives (like calibrate_speed_experiment.py) and, from the same
-data, DERIVES controller_config.POSITION_AXES, HEADING_OFFSET_RAD, and
-MOTOR_UNITS_PER_MPS all at once -- one deployment instead of separately running this
-alongside calibrate_speed_experiment.py. There's no wheel odometry on this platform, so
-OptiTrack is the only ground truth, and a straight drive gives it something unambiguous
-to measure -- a regression over many samples is also inherently more robust to single-
-sample OptiTrack noise/jitter than reading one or two live values by eye (see
-print_poses_experiment.py, the original manual approach this was built to replace).
+"""Position/heading/speed calibration experiment -- NOT the real controller. Drives
+straight (by default, ONE attempt -- see "Why a single attempt by default" below) and,
+from the resulting OptiTrack data, DERIVES controller_config.POSITION_AXES,
+HEADING_OFFSET_RAD, and MOTOR_UNITS_PER_MPS all at once -- one deployment instead of
+separately running this alongside calibrate_speed_experiment.py. There's no wheel
+odometry on this platform, so OptiTrack is the only ground truth, and a straight drive
+gives it something unambiguous to measure -- a regression over many samples within that
+one drive is also inherently more robust to single-sample OptiTrack noise/jitter than
+reading one or two live values by eye (see print_poses_experiment.py, the original
+manual approach this was built to replace).
 
 Deploy the same way as the real controller (see ../README.md), with
 config = {"self_hostname": "...", "motor_targets": [...], "hold_seconds": <float>,
 "settle_seconds": <float>} -- no genome_path or hostnames list needed, since this
 doesn't sense neighbors, just its own tracked pose.
 
-What this CAN determine from straight drives alone:
+Why a single attempt by default: real Thymios don't drive perfectly straight, and this
+platform has no way to drive a robot back to an exact start position/heading (no wheel
+odometry, no closed-loop control of any kind -- see "Known open risks" in ../README.md).
+So a MULTI-leg sweep (motor_targets with more than one value) doesn't reset between
+legs -- leg 2 starts from wherever leg 1's drift left the robot, not from leg 1's actual
+start. One bad/curved leg then physically displaces every leg after it, which can run a
+robot out of tracked volume or usable runway, and pulls the final (averaged-across-legs)
+recommendation toward whatever that bad leg measured. A single ~10s drive is normally
+enough for a good regression fit (see DEFAULT_HOLD_SECONDS) without that risk. If a
+run looks bad (see the R^2/yaw-std warnings this prints), the fix is to manually put the
+robot back at its start position and re-run with a single target again -- not to queue up
+more targets and hope the sweep recovers.
+
+What this CAN determine from a straight drive:
   - POSITION_AXES: whichever 2 of OptiTrack's raw (x, y, z) axes actually change during
-    a drive are the ground-plane axes; the ~constant one is "up" and gets excluded.
-    Computed per leg (each motor_targets entry) as a consistency check -- they should
-    all agree; a mismatch means something's wrong (bad tracking, non-straight motion).
+    the drive are the ground-plane axes; the ~constant one is "up" and gets excluded.
+    If you do pass multiple motor_targets, this is computed per leg as a consistency
+    check -- they should all agree; a mismatch means something's wrong (bad tracking,
+    non-straight motion, or drift between legs per the above).
   - HEADING_OFFSET_RAD: this codebase's convention is heading=0 means "facing +y" in the
     (POSITION_AXES-selected) sim frame (see move() in
     initial_implementation/experiment/simulation_free_global_mod_2_LJ.py and
     print_poses_experiment.py's calibration notes) -- i.e. moving straight forward at
     heading=0 produces a travel bearing of +pi/2 in that frame. Comparing the ACTUAL
     measured travel bearing against the robot's raw yaw reading at the same time gives
-    HEADING_OFFSET_RAD directly, PROVIDED you already know ROTATION_SIGN. Averaged
-    across all legs for the final recommendation, with per-leg values reported too so
-    you can see whether they actually agree or are just averaging out noise.
-  - MOTOR_UNITS_PER_MPS: a least-squares fit of target ~= k * measured_speed across all
-    legs (same formula calibrate_speed_experiment.py uses), more robust than any single
-    leg's point estimate since it's fit across your platform's whole speed range.
+    HEADING_OFFSET_RAD directly, PROVIDED you already know ROTATION_SIGN.
+  - MOTOR_UNITS_PER_MPS: target / measured_speed for a single leg -- exactly what a
+    least-squares fit (calibrate_speed_experiment.py's approach) degenerates to with one
+    data point, so no separate code path is needed for the single-attempt default.
 
 What this CANNOT determine (fundamentally, not a limitation of this script specifically):
   - ROTATION_SIGN: a pure straight-line drive (w=0 the whole time) carries no information
@@ -40,7 +53,9 @@ What this CANNOT determine (fundamentally, not a limitation of this script speci
 
 calibrate_speed_experiment.py is now largely redundant with this script (this one does
 everything it does, plus position/heading, in one deployment) -- left in place rather
-than deleted, in case you want its narrower, simpler sweep for a quick MOTOR_UNITS_PER_MPS-only recheck.
+than deleted, in case you specifically want its narrower, multi-target speed-only sweep
+(e.g. a one-time careful rig characterization where you have the space/patience to
+reposition between legs yourself).
 """
 import asyncio
 import os
@@ -58,10 +73,8 @@ import numpy as np
 import controller_config as cfg
 from pose_utils import quaternion_to_yaw
 
-DEFAULT_MOTOR_TARGETS = [100, 200, 300, 400, 500]
-DEFAULT_HOLD_SECONDS = 10.0   # long enough for a good position/heading regression fit;
-                               # shorten once you trust the rig (total sweep time is
-                               # roughly len(motor_targets) * (hold_seconds + settle_seconds))
+DEFAULT_MOTOR_TARGETS = [300]  # single attempt by default -- see module docstring
+DEFAULT_HOLD_SECONDS = 10.0    # long enough for a good position/heading regression fit
 DEFAULT_SETTLE_SECONDS = 2.0
 SAMPLE_INTERVAL_S = 0.5  # matches OptiTrack's own ~2 Hz push rate -- no point polling faster
 PRE_DRIVE_SAMPLES = 4    # ~2s stationary, to confirm tracking before committing to the sweep
@@ -87,9 +100,9 @@ class CalibratePositionHeadingExperiment:
         if stale_keys:
             raise ValueError(
                 f"config has {stale_keys}, which this experiment no longer accepts -- it "
-                f"was a single-drive test before, now it sweeps multiple targets like "
-                f"calibrate_speed_experiment.py does. Use 'motor_targets' (a list, default "
-                f"{DEFAULT_MOTOR_TARGETS}) and 'hold_seconds' (per-leg drive duration, "
+                f"now takes 'motor_targets' (a list, default {DEFAULT_MOTOR_TARGETS} -- one "
+                f"attempt by default, see module docstring for why) and 'hold_seconds' "
+                f"(drive duration, "
                 f"default {DEFAULT_HOLD_SECONDS}) instead -- passing the old keys would "
                 f"otherwise silently fall back to these defaults and ignore whatever you "
                 f"specified, since dict.get() doesn't know an old key from a typo.")
