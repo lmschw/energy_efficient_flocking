@@ -4,12 +4,19 @@ HARDWARE TRIAL RUNBOOK -- 3-agent Hebbian ABCD controller on real Thymios
 0. COMMIT & PUSH energy_efficient_flocking
 --------------------------------------------
 New/changed files needed on the Pis:
-  ants26_replication/hardware_deployment/swarm_project.yaml
+  swarm_project.yaml                          (REPO ROOT -- must stay here, see below)
   ants26_replication/hardware_deployment/hebbian_save_battery_avoid_all_best.npy
   ants26_replication/hardware_deployment/hebbian_swarm_experiment.py
   ants26_replication/hardware_deployment/README.md
 Push to origin/main -- the Pis `git pull` this repo directly, nothing local
 matters until it's pushed.
+
+IMPORTANT: swarm_project.yaml MUST live at the repo root, not inside
+ants26_replication/hardware_deployment/. There are two independent readers of
+this file: the Pi-side loader (tolerates nesting, uses rglob) and a separate
+CONTROLLER-side Project.load_config() that does a flat git clone and
+hardcodes <local_clone>/swarm_project.yaml with no recursive search --
+nesting it raises FileNotFoundError there. Don't move it back.
 
 
 1. LOCAL DRY RUN (no hardware)
@@ -22,11 +29,11 @@ Look for "All checks passed." at the end.
 
 2. PHYSICAL / NETWORK SETUP
 --------------------------------------------
-- Power on thymio-15, thymio-16, thymio-17 and their Pis; confirm they're
+- Power on thymio-17, thymio-18, thymio-20 and their Pis; confirm they're
   reachable and registered with the coordinator.
 - Confirm Motive/OptiTrack is streaming and the rigid bodies
-  "RigidBody 19 / 15 / 20" are assigned to those three robots (per
-  swarm_project.yaml's hostname_map).
+  "RigidBody 22 / 14 / 21" are assigned to those three robots (per
+  swarm_project.yaml's hostname_map, repo root).
 - Run the three launcher scripts below from an environment where
   swarm_platform is importable, e.g.:
     cd /home/lilly/dev/thymio_swarm/thymio_swarm_platform

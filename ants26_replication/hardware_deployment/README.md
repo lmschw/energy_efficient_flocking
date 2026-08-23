@@ -3,22 +3,24 @@
 Deploys a genome trained by `experiment/optimize_hebbian.py` (in this same repo) onto
 real hardware via `thymio_swarm_platform` (found at `/home/lilly/dev/thymio_swarm/`).
 
-**This directory IS the deployable project.** `swarm_project.yaml` (right here) registers
-its experiments, so `thymio_swarm_platform`'s `client.project()` can clone this repo's
-GitHub remote directly (`ProjectManager` only keeps this directory's own subtree once
-cloned -- see that file's header comment) -- exactly the same "point the platform at an
-external repo" pattern `thymio_swarm_platform/examples/decision_external_repo.py` already
-uses for a different, unrelated project. Nothing needs to be copied into any other repo.
-The **execution** (controller-side scripts that connect to the coordinator and drive
-install/start/stop) lives in `thymio_swarm_platform/examples/hebbian_swarm_trial.py` and
-`hebbian_speed_calibration.py` instead -- that's the repo with `swarm_platform` actually
-installed, and where its other example launchers already live.
+**The whole repo IS the deployable project.** `/swarm_project.yaml` at the **repo root**
+(NOT in this directory -- see that file's header comment for exactly why it can't live
+here despite this directory being the only code it needs) registers this directory's
+experiments, so `thymio_swarm_platform`'s `client.project()` can clone this repo's GitHub
+remote directly -- exactly the same "point the platform at an external repo" pattern
+`thymio_swarm_platform/examples/decision_external_repo.py` already uses for a different,
+unrelated project. Nothing needs to be copied into any other repo. The **execution**
+(controller-side scripts that connect to the coordinator and drive install/start/stop)
+lives in `thymio_swarm_platform/examples/hebbian_swarm_trial.py`,
+`hebbian_speed_calibration.py`, and `hebbian_pose_calibration.py` instead -- that's the
+repo with `swarm_platform` actually installed, and where its other example launchers
+already live.
 
 ## Files
 
 | File | Purpose |
 |---|---|
-| `swarm_project.yaml` | Registers this directory's experiments with the platform. Read its header comment -- it explains why the genome `.npy` lives flat in here instead of in `../hebbian_results_v2/`. |
+| `/swarm_project.yaml` (repo root, one level up from here) | Registers this directory's experiments with the platform, using dotted `class:` paths like `ants26_replication.hardware_deployment.hebbian_swarm_experiment.HebbianSwarmExperiment`. Read its header comment -- it explains both why it has to be at repo root and why the genome `.npy` still lives flat in here instead of in `../hebbian_results_v2/`. |
 | `controller_config.py` | All tunable/calibration constants. **Read this first.** |
 | `sensor_model.py` | 4-quadrant range/bearing sensing -- ported verbatim from `experiment/sensor_model.py` (same tested math, only the config import changed). |
 | `hebbian_controller.py` | The MLP forward pass + Hebbian update + genome loading -- ported verbatim from `experiment/hebbian_controller.py`. |
@@ -157,24 +159,25 @@ effective learning dynamics. This also happens to match OptiTrack's own ~2 Hz pu
 - **`BATTERY_MODE = "simulated"`** -- this genome was trained WITH the battery sensor
   (`battery_sensor=True` in its history JSON), so `"none"` mode would silently feed it a
   placeholder input it never learned to use. Requires `scipy` on each Pi.
-- **Hosts:** `thymio-15`, `thymio-16`, `thymio-17` -- their OptiTrack rigid-body mappings
-  are in this directory's own `swarm_project.yaml` (see its header comment for why that's
-  duplicated from, and not read out of, `thymio_raspberry_swarm_control`).
+- **Hosts:** `thymio-17`, `thymio-18`, `thymio-20` -- their OptiTrack rigid-body mappings
+  are in `/swarm_project.yaml` (repo root). If you change `HOSTS`, update both that file's
+  `hostname_map` and the `HOSTS` list in all three
+  `thymio_swarm_platform/examples/hebbian_*.py` launchers to match.
 
 ## A subpackage import gotcha (already fixed in this package, worth knowing about)
 
 `thymio_swarm_platform`'s `ProjectLoader` only adds the project's **root** directory to
-`sys.path` (confirmed in `swarm_platform/projects/loader.py`) -- which, for this project,
-*is* this directory, so `hebbian_swarm_experiment.py`'s own bare sibling imports
-(`import controller_config as cfg`) resolve fine as-is. `diagnostics/*.py` sits one level
-deeper, though (registered in `swarm_project.yaml` as `diagnostics.calibrate_speed_experiment...`
-etc.), so its bare imports would raise `ModuleNotFoundError` at daemon-load time without a
-fix -- both `diagnostics/print_poses_experiment.py` and
-`diagnostics/calibrate_speed_experiment.py` insert their own directory into `sys.path` at
-the top of the file (before their sibling imports) to handle this. If you add another
-experiment file anywhere other than this directory's own root, copy the same three-line
-shim (`hebbian_swarm_experiment.py` keeps a no-op copy of it too, defensively, in case it
-ever moves).
+`sys.path` (confirmed in `swarm_platform/projects/loader.py`) -- which, since
+`/swarm_project.yaml` sits at the actual repo root, is the WHOLE repo, not this directory.
+So `hebbian_swarm_experiment.py` (registered as
+`ants26_replication.hardware_deployment.hebbian_swarm_experiment...`) and everything under
+`diagnostics/` alike need this directory added to `sys.path` themselves before their own
+bare sibling imports (`import controller_config as cfg`) will resolve -- without it,
+they'd raise `ModuleNotFoundError` at daemon-load time. `hebbian_swarm_experiment.py`,
+`diagnostics/print_poses_experiment.py`, and `diagnostics/calibrate_speed_experiment.py`
+each insert their own directory into `sys.path` at the top of the file (before their
+sibling imports) to handle this -- if you add another experiment file anywhere in this
+package, copy the same three-line shim.
 
 Relatedly, `ProjectManager` never `chdir()`s into the active project directory before
 running an experiment, so a bare filename like `config["genome_path"]` is not guaranteed
@@ -220,18 +223,24 @@ To calibrate (4), `MOTOR_UNITS_PER_MPS`: run
 ## Deployment steps
 
 **Steps 1-2 below are already done in this checkout** for the current trial config (see
-"Current trial config" above) -- `swarm_project.yaml` already registers `hebbian_swarm`,
-`calibrate_speed`, and `print_poses`, and the genome `.npy` already sits flat in this
-directory. What's still open: calibration (step 3, unverified placeholders still in
-`controller_config.py`), and pushing this repo's commits so the Pis can actually pull them
-(git clone/pull runs on the Pi side -- your local checkout being up to date changes
-nothing until it's pushed).
+"Current trial config" above) -- `/swarm_project.yaml` (repo root) already registers
+`hebbian_swarm`, `calibrate_speed`, and `print_poses`, and the genome `.npy` already sits
+flat in this directory. What's still open: calibration (step 3, unverified placeholders
+still in `controller_config.py`), and pushing this repo's commits so the Pis can actually
+pull them (git clone/pull runs on the Pi side -- your local checkout being up to date
+changes nothing until it's pushed).
 
+0. **`/swarm_project.yaml` must stay at the repo root.** It was originally placed in this
+   directory, which worked for the Pi-side loader (`rglob`-based, tolerates nesting) but
+   raised `FileNotFoundError` from the CONTROLLER-side `Project.load_config()`
+   (`thymio_swarm_platform/swarm_platform/controller/project.py`), which does a plain
+   flat `git clone` and hardcodes `<local_clone>/swarm_project.yaml` with no recursive
+   search at all. Don't move it back into a subdirectory.
 1. Pick (or finish training) a genome — `--no-battery-sensor` for `BATTERY_MODE =
    "none"`, or a battery-aware genome (no `--no-battery-sensor`) for `BATTERY_MODE =
    "simulated"` — ideally via `python ../experiment/optimize_hebbian.py [--no-battery-sensor]
    [--wind-grid 50 ...]`. Copy the resulting `.npy` flat into this directory (see
-   `swarm_project.yaml`'s header comment for why) and point `GENOME_PATH_ON_PI` in
+   `/swarm_project.yaml`'s header comment for why) and point `GENOME_PATH_ON_PI` in
    `thymio_swarm_platform/examples/hebbian_swarm_trial.py` at its basename.
 2. Run `python local_test_harness.py [genome_path]` locally first — no hardware needed,
    validates the whole pipeline (shapes, bounds, missing-pose handling, and both battery

@@ -5,12 +5,14 @@ via thymio_swarm_platform.
 Matches that platform's de-facto experiment contract (there is no formal base class --
 see README.md): __init__(robot, config, logger), async run()/pause()/resume()/stop().
 
-This directory (ants26_replication/hardware_deployment/) IS the deployable project: it
-has its own swarm_project.yaml registering this class, so thymio_swarm_platform's
-controller-side scripts (thymio_swarm_platform/examples/hebbian_swarm_trial.py) can point
-client.project() straight at this repo's GitHub remote -- no copying into another repo.
-Start a session with a config dict providing at least genome_path, hostnames, and
-self_hostname (see README.md for the full walkthrough).
+The whole energy_efficient_flocking repo IS the deployable project: /swarm_project.yaml
+(at the REPO ROOT -- see that file's header comment for why it can't live in this
+directory despite this being the only code it actually needs) registers this class, so
+thymio_swarm_platform's controller-side scripts
+(thymio_swarm_platform/examples/hebbian_swarm_trial.py) can point client.project()
+straight at this repo's GitHub remote -- no copying into another repo. Start a session
+with a config dict providing at least genome_path, hostnames, and self_hostname (see
+README.md for the full walkthrough).
 """
 import asyncio
 import math
@@ -18,10 +20,11 @@ import os
 import sys
 
 # thymio_swarm_platform's ProjectLoader only adds the project's ROOT directory to
-# sys.path (see loader.py), not this file's own directory. This file happens to sit
-# directly in project root (swarm_project.yaml's own directory) so this is a no-op in
-# practice today, but it's kept as a defensive habit shared with diagnostics/*.py (which
-# DO need it, being one level deeper) in case this file ever moves.
+# sys.path (see loader.py) -- since project root is now the whole repo (swarm_project.yaml
+# lives at its top level, not in this directory -- see that file's header comment), this
+# file's own directory is NOT on sys.path by default, so the bare `import controller_config`
+# below (and the same pattern in sensor_model.py/hebbian_controller.py/pose_utils.py/
+# motor_utils.py/wind_battery_model.py) would raise ModuleNotFoundError without this.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
