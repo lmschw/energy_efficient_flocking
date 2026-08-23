@@ -77,7 +77,7 @@ WHEEL_DISTANCE_M = 0.085     # thymio_swarm_platform RobotConfig.wheel_distance
 MAX_MOTOR_TARGET = 500       # thymio_swarm_platform RobotConfig.max_motor (raw units;
                              # NOT enforced by the platform's Robot.drive() itself)
 
-MOTOR_UNITS_PER_MPS = 12652.30
+MOTOR_UNITS_PER_MPS = 4788.04
 # UNVERIFIED: assumes raw motor target 500 (the commonly-cited firmware ceiling) maps to
 # roughly this controller's own LINEAR_VEL_MAX = 0.2 m/s top speed. Measure your actual
 # Thymio's real-world speed at a given motor.target value (drive at a fixed target for a
@@ -92,9 +92,9 @@ HEADING_OFFSET_RAD_DEFAULT = -2.8531
 # calibration and how each rigid body's "front" was defined when you created it.
 
 HEADING_OFFSET_RAD = {
-    # "thymio-17": 0.0,
-    "thymio-18": -2.8531,
-    "thymio-20": -2.8531,
+    "thymio-17": +2.7983,
+    "thymio-20": -0.8783,
+    "thymio-18": -2.6642,
 }
 # PER-ROBOT, not one shared constant -- calibrate_position_heading_experiment.py's own
 # data showed real robots disagreeing by more than measurement noise would explain
@@ -109,7 +109,7 @@ HEADING_OFFSET_RAD = {
 # calibrate_position_heading_experiment.py) -- re-run that script and replace these
 # before trusting them; it now prints a ready-to-paste dict for this exact purpose.
 
-POSITION_AXES = (1, 2)
+POSITION_AXES = (0,1)
 # STALE, from the same flawed calibration run as HEADING_OFFSET_RAD above -- (1, 2)
 # implies axis 0 is "up", but this rig is confirmed Y-up (axis 1 is up), so this is
 # almost certainly wrong and should read (0, 2) once you re-run the fixed
