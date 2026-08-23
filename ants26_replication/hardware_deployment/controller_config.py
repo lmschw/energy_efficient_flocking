@@ -47,7 +47,12 @@ ANGULAR_VEL_MAX = math.pi / 5  # rad/s
 # Whichever mode you use, if it's "simulated": disclose this in any writeup. The reported
 # battery is a physically-modeled software quantity computed from real robot positions,
 # not a measurement of real power draw.
-BATTERY_MODE = "none"   # "none" or "simulated"
+BATTERY_MODE = "simulated"   # "none" or "simulated"
+# Set to "simulated" for this deployment: the chosen genome (hebbian_results_v2/
+# hebbian_save_battery_avoid_all_best.npy, the paper-default n_agents=20 run through all
+# 3 curriculum stages) was trained WITH the battery sensor (battery_sensor=True in its
+# history JSON) -- there is no "_nosensor" variant of it. "none" mode would silently feed
+# it a constant placeholder it was never trained to expect.
 BATTERY_SENSOR_PLACEHOLDER = 0.0   # used only when BATTERY_MODE == "none"
 
 # --- Control tick rate ---

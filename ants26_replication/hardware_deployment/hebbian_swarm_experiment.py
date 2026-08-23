@@ -13,6 +13,15 @@ genome_path, hostnames, and self_hostname (see README.md for the full walkthroug
 """
 import asyncio
 import math
+import os
+import sys
+
+# thymio_swarm_platform's ProjectLoader only adds the project's ROOT directory to
+# sys.path (see loader.py), not this file's own directory -- so once this file lives at
+# experiments/hebbian_swarm/hebbian_swarm_experiment.py, the bare `import controller_config`
+# below (and the same pattern in sensor_model.py/hebbian_controller.py/pose_utils.py/
+# motor_utils.py/wind_battery_model.py) would raise ModuleNotFoundError without this.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import numpy as np
 
@@ -44,7 +53,7 @@ class HebbianSwarmExperiment:
                               "list/order on every robot) and config['self_hostname'] "
                               "are both required.")
 
-        self.rules = unflatten_abcd(np.load(self.config["genome_path"]))
+        self.rules = unflatten_abcd(np.load(self._resolve_genome_path(self.config["genome_path"])))
         self.hostnames = list(self.config["hostnames"])
         self.self_hostname = self.config["self_hostname"]
         self.w1, self.w2, self.w3 = init_weights()
@@ -67,6 +76,26 @@ class HebbianSwarmExperiment:
                     "pip install scipy on this Pi, or set BATTERY_MODE = 'none'."
                 ) from exc
             self._wind_battery_model = wind_battery_model
+
+    @staticmethod
+    def _resolve_genome_path(genome_path):
+        """Resolves a relative genome_path against THIS FILE's own directory if it
+        doesn't already exist relative to the process's current working directory.
+        thymio_raspberry_swarm_control's ProjectManager never chdir()s into the active
+        project directory before running an experiment (confirmed: manager.py just
+        clones/pulls it, and daemon/server.py's own cwd print shows whatever directory
+        the daemon process happened to be started from) -- so a config value like
+        "experiments/hebbian_swarm/hebbian_..._best.npy", correct relative to the
+        project root, is NOT reliably correct relative to os.getcwd() at runtime. An
+        absolute path, or a path that already resolves from the real cwd, is used as-is.
+        """
+        if os.path.isabs(genome_path) or os.path.exists(genome_path):
+            return genome_path
+        candidate = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                  os.path.basename(genome_path))
+        if os.path.exists(candidate):
+            return candidate
+        return genome_path  # let np.load() raise its own clear FileNotFoundError
 
     async def _tick(self):
         """One full sense -> decide -> act step. Factored out from run()'s loop so

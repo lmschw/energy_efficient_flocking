@@ -27,6 +27,13 @@ How to calibrate:
    from the real controller's behavior).
 """
 import asyncio
+import os
+import sys
+
+# See hebbian_swarm_experiment.py's identical comment: the daemon only puts the
+# project ROOT on sys.path, not this file's own directory, so the bare imports below
+# need this once the file is deployed inside a subpackage.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import controller_config as cfg
 from pose_utils import quaternion_to_yaw, poses_to_agents
