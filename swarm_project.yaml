@@ -36,8 +36,8 @@ tracking:
   # trial actually uses are listed -- add more here if you change HOSTS in the launcher.
   hostname_map:
     thymio-17: "RigidBody 27"
-    thymio-18: "RigidBody 28"
-    thymio-20: "RigidBody 26"
+    thymio-18: "RigidBody 14"
+    thymio-20: "RigidBody 21"
 
 
 experiments:
