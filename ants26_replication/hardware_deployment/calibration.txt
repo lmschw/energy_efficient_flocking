@@ -1,0 +1,17 @@
+=== Per-robot results ===
+ hostname position_axes axes_agree  heading_offset_if_rotation_sign_positive  heading_offset_if_rotation_sign_negative  recommended_units_per_mps  n_legs_usable  n_legs_total
+thymio-20        [1, 2]       True                                 -3.038649                                 -2.110241               22049.134094            1.0           1.0
+thymio-18        [1, 2]       True                                 -2.667548                                 -2.499356                3255.463534            1.0           1.0
+
+=== Aggregated recommendations (shared constants -- one controller_config.py for every Pi) ===
+POSITION_AXES = [1, 2]
+MOTOR_UNITS_PER_MPS = 12652.30
+
+=== HEADING_OFFSET_RAD (per robot, then aggregated) ===
+ROTATION_SIGN is NOT determined by this test -- pick whichever column matches your separately-observed ROTATION_SIGN, for BOTH the per-robot and aggregated lines.
+  thymio-20: if ROTATION_SIGN= 1.0 -> -3.0386   if ROTATION_SIGN=-1.0 -> -2.1102
+  thymio-18: if ROTATION_SIGN= 1.0 -> -2.6675   if ROTATION_SIGN=-1.0 -> -2.4994
+  MEAN if ROTATION_SIGN= 1.0 -> -2.8531  MEAN if ROTATION_SIGN=-1.0 -> -2.3048
+  WARNING: robots disagree by up to 0.3711 rad -- more than measurement noise likely explains (0.15 rad threshold). Their rigid bodies may not share the same 'front' convention in Motive; consider per-robot HEADING_OFFSET_RAD instead of one shared constant.
+
+Update POSITION_AXES, HEADING_OFFSET_RAD, and MOTOR_UNITS_PER_MPS in energy_efficient_flocking's ants26_replication/hardware_deployment/controller_config.py, commit+push, then determine ROTATION_SIGN by observing a turn before running hebbian_swarm_trial.py.

@@ -76,14 +76,14 @@ WHEEL_DISTANCE_M = 0.085     # thymio_swarm_platform RobotConfig.wheel_distance
 MAX_MOTOR_TARGET = 500       # thymio_swarm_platform RobotConfig.max_motor (raw units;
                              # NOT enforced by the platform's Robot.drive() itself)
 
-MOTOR_UNITS_PER_MPS = 500.0 / 0.2
+MOTOR_UNITS_PER_MPS = 12652.30
 # UNVERIFIED: assumes raw motor target 500 (the commonly-cited firmware ceiling) maps to
 # roughly this controller's own LINEAR_VEL_MAX = 0.2 m/s top speed. Measure your actual
 # Thymio's real-world speed at a given motor.target value (drive at a fixed target for a
 # timed run over a measured distance) and recompute this before trusting any distance-
 # or speed-based comparison against the simulation's numbers.
 
-HEADING_OFFSET_RAD = 0.0
+HEADING_OFFSET_RAD = -2.8531
 # UNVERIFIED: the yaw angle (after quaternion_to_yaw(), see pose_utils.py) OptiTrack
 # reports when a robot is physically oriented at this codebase's heading=0 (facing "+y"
 # in the simulation's convention -- see wrap_to_pi()/move() in
@@ -92,7 +92,7 @@ HEADING_OFFSET_RAD = 0.0
 # diagnostics/print_poses.py: point a robot at the sim's heading=0 direction, read its
 # raw yaw, and set this to minus that value.
 
-POSITION_AXES = (0, 1)
+POSITION_AXES = (1, 2)
 # UNVERIFIED: which two of OptiTrack's (x, y, z) position components map to this
 # codebase's 2D ground-plane (x, y). Motive is commonly Y-up by default (ground plane =
 # X/Z, i.e. axes (0, 2)), but this is fully dependent on your specific Motive
