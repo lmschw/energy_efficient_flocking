@@ -52,6 +52,10 @@ class PrintPosesExperiment:
         self.paused = False
         self.hostnames = list(self.config.get("hostnames", []))
         self.self_hostname = self.config.get("self_hostname")
+        self._min_y = None  # running min/max of sim-frame y across this whole run --
+        self._max_y = None  # walk a robot to each wall and read these off directly to
+                             # get CORRIDOR_Y_MIN/MAX for controller_config.py's corridor
+                             # speed-safety governor (see hebbian_swarm_experiment.py).
 
     async def run(self):
         while self.running:
@@ -78,6 +82,12 @@ class PrintPosesExperiment:
                              f"(dict has {list(cfg.HEADING_OFFSET_RAD.keys())}), "
                              f"ROTATION_SIGN={cfg.ROTATION_SIGN} -> sim frame "
                              f"x={x:.3f} y={y:.3f} heading={heading:+.3f} rad")
+                    if abs(y) < cfg.UNTRACKED_XY_THRESHOLD:
+                        self._min_y = y if self._min_y is None else min(self._min_y, y)
+                        self._max_y = y if self._max_y is None else max(self._max_y, y)
+                        line += (f" | corridor y range seen so far: "
+                                 f"[{self._min_y:.3f}, {self._max_y:.3f}] (walk to each wall "
+                                 f"to find CORRIDOR_Y_MIN/MAX for controller_config.py)")
                 print(line)
                 if self.logger:
                     self.logger.log(state={"raw_yaw": raw_yaw, "position": own_pose.position}, command={})

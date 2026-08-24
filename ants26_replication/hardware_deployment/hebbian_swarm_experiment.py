@@ -37,6 +37,20 @@ from pose_utils import poses_to_agents
 from motor_utils import velocity_to_motor_targets
 
 
+def _corridor_speed_scale(y):
+    """Deployment-only wall-safety governor -- see CORRIDOR_Y_MIN/MAX's comment in
+    controller_config.py for why this exists (the genome has no wall sense of its own).
+    Returns a [0, 1] multiplier for v: 1.0 away from both walls, scaling linearly down to
+    0.0 over the last CORRIDOR_SLOWDOWN_MARGIN_M before either wall. Disabled (always
+    1.0) until both CORRIDOR_Y_MIN and CORRIDOR_Y_MAX are set."""
+    if cfg.CORRIDOR_Y_MIN is None or cfg.CORRIDOR_Y_MAX is None:
+        return 1.0
+    margin = min(y - cfg.CORRIDOR_Y_MIN, cfg.CORRIDOR_Y_MAX - y)
+    if margin <= 0.0:
+        return 0.0
+    return min(1.0, margin / cfg.CORRIDOR_SLOWDOWN_MARGIN_M)
+
+
 class HebbianSwarmExperiment:
     # NOTE: the parameter must be named exactly `config` (not e.g. config_dict) --
     # thymio_swarm_platform's daemon instantiates every experiment with the keyword
@@ -142,6 +156,8 @@ class HebbianSwarmExperiment:
             x_in[8] = cfg.BATTERY_SENSOR_PLACEHOLDER
 
         v, w, self.w1, self.w2, self.w3 = hebbian_step(x_in, self.w1, self.w2, self.w3, self.rules)
+        if self_tracked:
+            v *= _corridor_speed_scale(current_position[1])
         left, right = velocity_to_motor_targets(v, w)
         await self.robot.drive(left, right)
         self._last_w = w

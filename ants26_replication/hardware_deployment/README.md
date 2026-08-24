@@ -30,7 +30,7 @@ actually installed, and where its other example launchers already live.
 | `hebbian_save_battery_avoid_all_best.npy` | The deployed genome -- a copy of `../hebbian_results_v2/hebbian_save_battery_avoid_all_best.npy` (see "Current trial config"). Kept flat here, not referenced from its original location, for the same reason as `swarm_project.yaml`'s note above. |
 | `local_test_harness.py` | Validates the whole pipeline with fake robot/pose objects -- **run this before touching real hardware**, since the platform itself has no dry-run mode at all. |
 | `diagnostics/calibrate_position_heading_experiment.py` | **Calibration helper (current).** Sweeps a series of straight-line drives and derives `POSITION_AXES`, `HEADING_OFFSET_RAD`, AND `MOTOR_UNITS_PER_MPS` all from the same OptiTrack data -- see Calibration below. Supersedes the two files below (kept, not deleted). |
-| `diagnostics/print_poses_experiment.py` | Superseded by `calibrate_position_heading_experiment.py`. Manual/eyeball calibration helper (position axes / heading offset) -- still useful as a live raw-pose viewer if you want to sanity-check something by hand. |
+| `diagnostics/print_poses_experiment.py` | Superseded by `calibrate_position_heading_experiment.py` for position/heading calibration, but still useful as a live raw-pose viewer -- also now the way to measure `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` (see "Corridor wall safety" below): it tracks and prints a running min/max of sim-frame `y` as you walk a robot around. |
 | `diagnostics/calibrate_speed_experiment.py` | Superseded by `calibrate_position_heading_experiment.py`. Speed-only calibration helper (`MOTOR_UNITS_PER_MPS`) -- kept for a quick narrower recheck if you don't need the other two constants re-verified. |
 
 Controller-side launchers (in `thymio_swarm_platform/examples/`, not here), run in this
@@ -171,6 +171,32 @@ effective learning dynamics. This also happens to match OptiTrack's own ~2 Hz pu
   are in `/swarm_project.yaml` (repo root). If you change `HOSTS`, update both that file's
   `hostname_map` and the `HOSTS` list in all three
   `thymio_swarm_platform/examples/hebbian_*.py` launchers to match.
+
+## Corridor wall safety
+
+The deployed genome has **no wall-distance sensory input at all** (`sensor_model.py`'s 10
+inputs are 4 neighbor quadrants, own battery, own heading -- nothing about absolute
+position or walls). Whatever wall-avoidance it learned in `save_battery_avoid_wall`/
+`save_battery_avoid_all` is pure reward-shaping against the training simulation's 20-agent,
+`Y_RANGE=[-5, 5]` arena -- confirmed on real hardware to just not generalize to a 3-robot
+real room: it drives straight at the corridor edge without slowing at all.
+
+Fixing this for real would mean retraining with an actual wall sensor (see
+`../wall_sensor_variant/` -- a separate, still-experimental architecture, not used here).
+Instead, `hebbian_swarm_experiment.py` applies a deployment-only safety governor: it
+scales the genome's own commanded forward speed `v` down toward 0 as the robot's real
+tracked position nears `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` (`controller_config.py`), leaving
+the genome's own turning (`w`) untouched. It's a pure speed cap, not a steering override,
+and it is **disabled by default** (`v` passes through unmodified) until both bounds are set.
+
+To measure your real corridor bounds before this trial:
+1. Deploy `diagnostics/print_poses_experiment.py` with `config = {"hostnames": [...],
+   "self_hostname": "..."}` (same as position/heading calibration).
+2. Walk (or drive) the robot to each wall of your actual usable runway -- it prints a
+   running `corridor y range seen so far: [min, max]` as you go.
+3. Set `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` in `controller_config.py` to those values (with a
+   little headroom inward, not the exact wall-touching extremes), commit+push, and tune
+   `CORRIDOR_SLOWDOWN_MARGIN_M` to your corridor's real width and the robot's real speed.
 
 ## A subpackage import gotcha (already fixed in this package, worth knowing about)
 

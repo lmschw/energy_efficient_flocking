@@ -128,6 +128,45 @@ ROTATION_SIGN = 1.0
 # before conversion to left/right wheel targets in motor_utils.py.
 
 # =====================================================================================
+# --- Corridor wall safety (deployment-only -- NOT a trained genome behavior) ---------
+# =====================================================================================
+# sensor_model.get_sensor_data()'s 10 inputs are 4 neighbor quadrants (dist+bearing),
+# own battery, own heading -- there is NO wall-distance/absolute-position input anywhere
+# in the architecture. Whatever wall-avoidance the paper-default genome learned in
+# save_battery_avoid_wall/save_battery_avoid_all came from reward shaping alone during
+# training, against a fixed 20-agent, Y_RANGE=[-5,5] simulated arena -- an emergent
+# artifact of correlations specific to that arena/neighbor density, not a real sense of
+# "wall nearby". Confirmed on real hardware: with only 3 robots in a much smaller room,
+# those correlations don't hold, and the genome genuinely does not react to real walls
+# at all -- it drove straight at the corridor edge without slowing.
+#
+# Fixing this properly means retraining with an actual wall-sensor input (see
+# ants26_replication/wall_sensor_variant/ -- a separate, still-experimental
+# architecture, not used here). Rather than block this deployment on that, this governor
+# is a deployment-side safety layer bolted on AFTER the genome's own v, w computation
+# (see hebbian_swarm_experiment.py._tick()): it scales the commanded forward speed v
+# down toward 0 as the robot's real, tracked sim-frame y (agents[:, 1], i.e. whichever
+# raw axis POSITION_AXES's second entry selects) approaches CORRIDOR_Y_MIN/MAX, and
+# leaves the genome's own turning decision (w) completely untouched -- deliberately the
+# simplest option (slow down only, not also steer back toward center), chosen over a
+# more assertive heading override because it changes the genome's own behavior less and
+# is easier to reason about as a pure safety cap. It is NOT direction-aware: v gets
+# scaled down near a wall even if the robot happens to already be heading away from it --
+# simpler and strictly safer than trying to also read intent from heading, at the cost
+# of some unnecessary slowdown in that case.
+CORRIDOR_Y_MIN = None   # meters, sim-frame y (agents[:, 1]) -- measure by deploying
+CORRIDOR_Y_MAX = None   # diagnostics/print_poses_experiment.py (with hostnames/
+                         # self_hostname set) and walking a robot to each wall; it prints
+                         # a running min/max of y for exactly this purpose. The governor
+                         # is disabled (v passes through unmodified) while either is
+                         # None -- set BOTH before relying on it to prevent wall strikes.
+CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
+# v scales linearly from 1.0 (at this distance or farther from either wall) to 0.0 (at
+# the wall) over this margin. Tune to your corridor's real width and the robot's real
+# top speed -- too small a margin gives the robot little time to actually slow down
+# before reaching the wall; too large eats into usable corridor width unnecessarily.
+
+# =====================================================================================
 # --- Simulated battery drainage (BATTERY_MODE == "simulated") ------------------------
 # Every constant below is copied verbatim from experiment/config.py's HEBBIAN_*/WAKE_*/
 # DRAG_*/BATTERY_* sections -- "the same battery drainage as the simulation" means using
