@@ -1,30 +1,30 @@
 === Per-robot results ===
  hostname position_axes axes_agree  heading_offset_if_rotation_sign_positive  heading_offset_if_rotation_sign_negative  recommended_units_per_mps  n_legs_usable  n_legs_total
-thymio-17        [0, 1]       True                                  2.798319                                  2.923885                5732.067645            1.0           1.0
-thymio-20        [0, 1]       True                                 -0.878271                                  0.028761                5458.247712            1.0           1.0
-thymio-18        [1, 2]       True                                 -2.664170                                 -2.497405                3173.809012            1.0           1.0
+thymio-17        [0, 2]       True                                  0.079730                                  0.263726                3592.165754            1.0           1.0
+thymio-20        [0, 2]       True                                  2.951674                                 -2.396055                3615.584283            1.0           1.0
+thymio-18        [0, 2]       True                                 -3.015101                                 -2.824301                3621.815695            1.0           1.0
 
 === Aggregated recommendations (shared constants -- one controller_config.py for every Pi) ===
-POSITION_AXES = [0, 1]  -- WARNING: robots disagreed ({'[0, 1]': np.int64(2), '[1, 2]': np.int64(1)}), do not trust a single shared value until you understand why
-MOTOR_UNITS_PER_MPS = 4788.04
+POSITION_AXES = [0, 2]
+MOTOR_UNITS_PER_MPS = 3609.86
 
 === HEADING_OFFSET_RAD (per robot -- paste directly into controller_config.py) ===
 ROTATION_SIGN is NOT determined by this test -- pick whichever dict below matches your separately-observed ROTATION_SIGN.
 
 if ROTATION_SIGN = 1.0:
 HEADING_OFFSET_RAD = {
-    "thymio-17": +2.7983,
-    "thymio-20": -0.8783,
-    "thymio-18": -2.6642,
+    "thymio-17": +0.0797,
+    "thymio-20": +2.9517,
+    "thymio-18": -3.0151,
 }
 
 if ROTATION_SIGN = -1.0:
 HEADING_OFFSET_RAD = {
-    "thymio-17": +2.9239,
-    "thymio-20": +0.0288,
-    "thymio-18": -2.4974,
+    "thymio-17": +0.2637,
+    "thymio-20": -2.3961,
+    "thymio-18": -2.8243,
 }
 
-Note: robots disagree by up to 5.4625 rad (> this script's 0.15 rad noise threshold) -- expected, and exactly why this is per-robot rather than one shared value. Just make sure every robot you're deploying actually has its own entry above (or falls back to HEADING_OFFSET_RAD_DEFAULT with a one-time warning, printed by pose_utils.py on the Pi -- see controller_config.py).
+Note: robots disagree by up to 5.9668 rad (> this script's 0.15 rad noise threshold) -- expected, and exactly why this is per-robot rather than one shared value. Just make sure every robot you're deploying actually has its own entry above (or falls back to HEADING_OFFSET_RAD_DEFAULT with a one-time warning, printed by pose_utils.py on the Pi -- see controller_config.py).
 
 Update POSITION_AXES, HEADING_OFFSET_RAD, and MOTOR_UNITS_PER_MPS in energy_efficient_flocking's ants26_replication/hardware_deployment/controller_config.py, commit+push, then determine ROTATION_SIGN by observing a turn before running hebbian_swarm_trial.py.
