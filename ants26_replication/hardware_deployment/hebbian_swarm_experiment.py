@@ -68,6 +68,11 @@ class HebbianSwarmExperiment:
         self._prev_position = None  # (x, y) as of the previous _tick(), for the
                                      # position-delta velocity estimate batterydrainage()
                                      # needs (no wheel encoders exist on this platform).
+                                     # Only ever set from a TRACKED pose -- see
+                                     # _is_tracked()'s use in _tick(); never the
+                                     # pose_utils.py untracked (1e4, 1e4) sentinel, or one
+                                     # stale tick later that sentinel becomes a ~14000m,
+                                     # one-tick "delta" that instantly zeroes the battery.
         self._last_w = None         # commanded angular velocity that was actually active
                                      # over the interval since _prev_position was recorded.
         # wind_battery_model has no extra dependencies beyond numpy (already required
@@ -101,9 +106,20 @@ class HebbianSwarmExperiment:
         poses = await self.robot.get_all_global_poses()
         agents, self_index = poses_to_agents(poses, self.hostnames, self.self_hostname)
         current_position = (float(agents[self_index, 0]), float(agents[self_index, 1]))
+        # pose_utils.py places an untracked robot at (1e4, 1e4) rather than raising -- a
+        # real, expected state right after a session starts, before OptiTrack has locked
+        # onto every rigid body. self_tracked guards the position-delta speed estimate
+        # below against it: without this check, a sentinel position gets stored as
+        # _prev_position, and the instant real tracking kicks in the next tick, the
+        # ~14000m "delta" over one CONTROL_TICK_SECONDS computes as a ~28000 m/s "speed",
+        # which floods straight into batterydrainage() and zeroes the battery in a single
+        # tick -- a confirmed real failure mode (all robots driving for ~2s then stopping
+        # simultaneously, no exception, just a quiet "battery depleted" print, because
+        # OptiTrack takes about that long to lock onto all three robots after start).
+        self_tracked = abs(current_position[0]) < cfg.UNTRACKED_XY_THRESHOLD
 
         if cfg.BATTERY_MODE == "simulated":
-            if self._prev_position is not None:
+            if self._prev_position is not None and self_tracked:
                 dt = cfg.CONTROL_TICK_SECONDS
                 dx = current_position[0] - self._prev_position[0]
                 dy = current_position[1] - self._prev_position[1]
@@ -114,7 +130,11 @@ class HebbianSwarmExperiment:
                 self.battery, _batt_drain, _wind_pct = self._wind_battery_model.compute_virtual_battery_update(
                     agents, self_index, self.battery, (speed, angular_vel, travel_heading), dt)
             agents[self_index, 3] = self.battery
-            self._prev_position = current_position
+            if self_tracked:
+                self._prev_position = current_position
+            # else: leave _prev_position at its last real value, so the delta computed
+            # once tracking resumes is still measured from a real prior position instead
+            # of silently skipping straight past the gap.
 
         sensor_inputs = get_sensor_data(agents)  # (10, n_agents)
         x_in = sensor_inputs[:, self_index].copy()
