@@ -77,7 +77,7 @@ WHEEL_DISTANCE_M = 0.085     # thymio_swarm_platform RobotConfig.wheel_distance
 MAX_MOTOR_TARGET = 500       # thymio_swarm_platform RobotConfig.max_motor (raw units;
                              # NOT enforced by the platform's Robot.drive() itself)
 
-MOTOR_UNITS_PER_MPS = 4788.04
+MOTOR_UNITS_PER_MPS = 3609.86
 # STILL STALE / DO NOT TRUST -- same flawed calibration run as HEADING_OFFSET_RAD above:
 # travel_speed is measured as hypot() over the (wrong) selected ground-plane axes, so
 # this number is corrupted too, not just the heading/axes values. Re-run calibration with
@@ -92,9 +92,9 @@ HEADING_OFFSET_RAD_DEFAULT = -2.8531
 # calibration and how each rigid body's "front" was defined when you created it.
 
 HEADING_OFFSET_RAD = {
-    "thymio-17": +2.7983,
-    "thymio-20": -0.8783,
-    "thymio-18": -2.6642,
+    "thymio-17": +0.0797,
+    "thymio-20": +2.9517,
+    "thymio-18": -3.0151,
 }
 # PER-ROBOT, not one shared constant -- pose_utils.poses_to_agents() looks up each pose's
 # own hostname here, falling back to HEADING_OFFSET_RAD_DEFAULT (with a one-time warning,
