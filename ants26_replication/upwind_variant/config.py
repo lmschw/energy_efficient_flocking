@@ -9,6 +9,23 @@ deliberately -- this file has zero import-time dependency on initial_implementat
 design, so the two projects can evolve independently without one silently breaking the
 other. If you tune one of the shared physics constants, decide explicitly whether the
 same tuning belongs in both places; nothing here keeps them in sync automatically.
+
+VARIANT of ../experiment/: stage 1 is "walk_upwind" instead of "walk_left" -- same
+reward shape (net progress along a fixed axis), but now expressed via WIND_DIRECTION
+below (so it reads as "progress against the wind" rather than an unexplained sign flip
+on x), and trained WITH wind enabled instead of disabled. Original stage 1 deliberately
+trained wind-free specifically "to avoid evolving the trivial strategy of just riding
+the tailwind" (see ../experiment/config.py's own comment on this) -- this variant
+accepts that risk on purpose, to see whether a genuinely wind-exposed agent can learn to
+push upwind using ONLY its existing inputs (own battery level, own heading, neighbor
+quadrants -- see sensor_model.py, unchanged from ../experiment/, no explicit wind/
+compass sensor added). The premise: battery drains faster the more the agent fights the
+wind, so battery level is the only (indirect, interoceptive) cue available for "am I
+currently heading upwind" -- same mechanism the existing save_battery_avoid_all stage
+already leans on for its own battery-awareness behavior, just introduced one stage
+earlier and made the ONLY objective (no distance/battery trade-off yet, so if this
+doesn't converge, the failure is about this cue being learnable at all, not about
+competing objectives).
 """
 
 import math
@@ -137,74 +154,40 @@ HEBBIAN_N_REPEATS = 3             # simulations per candidate (different seeds);
 HEBBIAN_BATCH_SEEDS = [42, 123, 777, 2026, 888, 99, 412, 555, 1010, 8432]
 
 # --- Staged curriculum (Section 2.3 / Table 2 / Fig. 1) ---
-# Stage 1 has no wind and rewards distance only, to avoid evolving the trivial strategy of
-# just riding the tailwind. Stage 2 turns on wind and adds battery + wall-collision terms.
-# Stage 3 adds a general inter-robot collision penalty on top of stage 2, hypothesized to
-# be what pushes evolution toward formation-reconfiguration strategies. Each stage's CMA-ES
-# run is seeded from the previous stage's best genome ("Next stage: best x is initial x" in
-# Fig. 1); stage 1 alone starts from a fresh uniform-random ABCD_init.
-HEBBIAN_STAGES = ("walk_left", "save_battery_avoid_wall", "save_battery_avoid_all")
+# Stage 1 ("walk_upwind" in this variant) rewards net progress against the wind, WITH wind
+# enabled -- see the module docstring above for why this deliberately departs from the
+# original stage 1 (which trained wind-free, rewarding raw distance along a fixed axis).
+# Stage 2 adds battery + wall-collision terms. Stage 3 adds a general inter-robot collision
+# penalty on top of stage 2, hypothesized to be what pushes evolution toward formation-
+# reconfiguration strategies. Each stage's CMA-ES run is seeded from the previous stage's
+# best genome ("Next stage: best x is initial x" in Fig. 1); stage 1 alone starts from a
+# fresh uniform-random ABCD_init.
+HEBBIAN_STAGES = ("walk_upwind", "save_battery_avoid_wall", "save_battery_avoid_all")
 HEBBIAN_STAGE_WIND_ENABLED = {
-    "walk_left": False,
+    "walk_upwind": True,
     "save_battery_avoid_wall": True,
     "save_battery_avoid_all": True,
 }
 # Fitness weights per stage: eff = HEBBIAN_EFF_DISTANCE_WEIGHT*dist + batt/BATTERY_W -
-# (collision_time + WALL_COL_MULT * wall_collision_time) / COLLISION_W - cohesion_dist /
-# COHESION_W. A weight of None means that term is entirely absent (matching Table 2's
-# stage 1 having no battery or collision terms, and stages 2/3 excluding inter-robot/
-# wall collisions respectively from view of that specific denominator).
+# (collision_time + WALL_COL_MULT * wall_collision_time) / COLLISION_W. A weight of None
+# means that term is entirely absent (matching Table 2's stage 1 having no battery or
+# collision terms, and stages 2/3 excluding inter-robot/wall collisions respectively
+# from view of that specific denominator).
 HEBBIAN_STAGE_FITNESS_WEIGHTS = {
-    #                             battery_w   collision_w   wall_col_mult   include_inter_robot_collision   cohesion_w
-    "walk_left":                 (None,        None,         3.0,            False,                          None),
-    "save_battery_avoid_wall":   (5.0,         500.0,        3.0,            False,                          None),
-    "save_battery_avoid_all":    (5.0,         15.0,         3.0,            True,                           1.0),
+    #                             battery_w   collision_w   wall_col_mult   include_inter_robot_collision
+    "walk_upwind":                (None,        None,         3.0,            False),
+    "save_battery_avoid_wall":   (5.0,         500.0,        3.0,            False),
+    "save_battery_avoid_all":    (5.0,         250.0,        3.0,            True),
 }
-# save_battery_avoid_all's collision_w dropped 250 -> 15 (~16.7x stronger penalty): the
-# n10_seed42 original-sweep genome was found (by direct simulation, not just the fitness
-# formula) to spend ~195s of its ~222s episode with agents in active pairwise collision
-# (mean inter-agent spacing collapsing from 1.69 at spawn to 0.55 by episode end) while
-# covering essentially the same distance as the zero-collision LJ baseline (12.40m vs
-# 12.51m) -- at collision_w=250 that entire 195s of chronic collision cost only ~0.78
-# fitness points against distance's 8.0-per-meter weight, nowhere near enough to compete.
-# At 15, the same 195s would cost ~13 points, roughly comparable to 1.6m of distance --
-# enough to actually matter without reopening the original "just don't move" exploit
-# (HEBBIAN_EFF_DISTANCE_WEIGHT below is unchanged, so distance is still dominant; the
-# floor on how much collision-avoidance can cost is bounded by episode length, not
-# unbounded like the pre-distance-weight battery term was).
-#
-# cohesion_w=2.0 added after that fix backfired: collision_time dropped 195s->30s as
-# intended, but mean battery went DOWN (17.4%->14.8%), not up -- collision penalty alone
-# just spreads agents out (end-of-episode spacing 0.55->0.92) without giving them any
-# reason to stay near each other, so whatever battery benefit the old (colliding) tight
-# formation incidentally provided (most plausibly wind-shielding/drafting) was lost with
-# nothing replacing it. cohesion_dist (stage_fitness()'s docstring) is a PURELY
-# GEOMETRIC term -- mean pairwise inter-agent distance, no velocity/heading/direction
-# component at all -- so it can only ever reward being closer together; it cannot reward
-# moving, turning, or any specific maneuver, leaving whatever behavior achieves that
-# closeness (e.g. drafting formations) entirely up to CMA-ES/Hebbian learning to
-# discover, same as every other term here. Deliberately small relative to the collision
-# penalty: at cohesion_w=2.0, going from spawn spacing (~1.69) to the old tight-cluster
-# spacing (~0.55) is worth only ~0.57 fitness points -- a nudge, not a dominant term --
-# so it shouldn't be able to out-compete collision_w=15's much larger penalty and pull
-# agents back into collision. Untested at other n_agents; the weight may need
-# recalibrating if mean pairwise distance scales with swarm size.
-#
-# UPDATE after 3-seed check at cohesion_w=2.0 (n10, seeds 42/123/777): the effect is NOT
-# consistent across seeds. seed42: battery 17.4%->22.2% (better), dist 12.40->10.38m,
-# collision_time 195.5->96.0s. seed123: battery 10.3%->9.2% (WORSE), dist ~flat,
-# collision_time 131.5->163.0s (WORSE -- cohesion out-pulled the collision penalty here).
-# seed777: battery 33.4%->17.2% (much WORSE, nearly halved), dist 7.24->9.69m (better),
-# collision_time 326.0->92.5s (much better). Only seed42 got the intended outcome; the
-# other two show cohesion interacting unpredictably with whatever local optimum each
-# seed's avoid_wall genome started from -- in seed123's case actively re-opening
-# collisions cohesion_w=2.0 was supposed to stay clear of. cohesion_w=1.0 here is a
-# follow-up tuning attempt: half the pull, testing whether a gentler nudge keeps
-# collision_time closer to the collision-only fix's ~30s baseline (across seeds) while
-# still buying back some battery, rather than cohesion sometimes overpowering the
-# collision penalty as seen at w=2.0. Single-seed test (n10_seed42) pending re-validation
-# across seeds if promising -- the 2.0 result above shows single-seed results here are
-# not reliable evidence of a weight actually working.
+
+# "dist_travelled" (simulation_hebbian.py, lj_baseline.py) is computed as progress along
+# this unit vector rather than a bare "-x" sign flip, so the reward formula reads as what
+# it means ("progress against the wind") instead of an unexplained axis choice. NOTE: this
+# does NOT make the wind direction itself configurable -- RayTraceCircularRobots' wake
+# model always marches in +x regardless of this constant, so "upwind" is only ever -x in
+# the actual physics. This vector exists purely to document that convention at the point
+# where distance is turned into a reward, not to generalize it.
+WIND_DIRECTION = (-1.0, 0.0)
 
 # Explicit distance weight, mirroring the LJ model's own EFF_DISTANCE_WEIGHT --
 # Table 2's literal formula has no such multiplier (dist_travelled has an implicit

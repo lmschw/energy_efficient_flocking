@@ -87,9 +87,44 @@ HEBBIAN_DEFAULT_SEED = 42
 
 # --- Robot & sensing (Section 2.1) ---
 HEBBIAN_N_AGENTS = 20             # swarm size used throughout the paper's experiments
-HEBBIAN_SENSING_RADIUS = 2.01     # R: neighbor detection radius [m]; also the "no neighbor" default distance
+HEBBIAN_SENSING_RADIUS = 2.01     # R: neighbor detection radius [m]; unused by this variant's
+                                   # sensor_model.py (kept for lj_baseline.py/wind_physics.py,
+                                   # which are unchanged from ../experiment/) -- see THYMIO_IR_RANGE.
 HEBBIAN_LINEAR_VEL_MAX = 0.2      # m/s, tanh output #1 rescaled to [-this, this]
 HEBBIAN_ANGULAR_VEL_MAX = math.pi / 5  # rad/s, tanh output #2 rescaled to [-this, this]
+
+# --- Real Thymio II IR proximity sensor geometry (prox.horizontal) ---
+# Sourced from Webots' community-calibrated Thymio2.proto model (cyberbotics/webots,
+# projects/robots/mobsya/thymio/protos/Thymio2.proto), converting each of the 7
+# DistanceSensor nodes' (x, y) mount translation into a bearing angle from the robot's
+# center (atan2(y, x)), which approximates each sensor's outward-pointing direction --
+# a reasonable proxy since the sensors sit on the perimeter of a round body pointing
+# radially outward, but NOT independently re-verified against the physical hardware.
+# Ordering matches thymio_swarm_platform's prox.horizontal[0..6] (confirmed via
+# wiki.thymio.org/en:thymioircalibration): indices 0-4 are the front sensors, left to
+# right; indices 5-6 are the rear sensors, left then right ("left"/"right" meaning the
+# robot's own left/right, i.e. this module's convention of +angle = robot's left).
+THYMIO_IR_ANGLES = (
+    0.6737, 0.3386, 0.0, -0.3386, -0.6737,   # front: left, front-left, center, front-right, right
+    2.3387, -2.3387,                          # rear: left, right
+)
+# Half-angle of each sensor's detection cone. NOT sourced from an authoritative spec --
+# no aperture is documented in the Thymio2.proto DistanceSensor nodes or in Aseba's own
+# docs; this is a disclosed assumption (roughly half the ~19.4 degree spacing between
+# adjacent front sensors), not a measured value.
+THYMIO_IR_HALF_APERTURE = math.radians(10.0)
+# Effective detection range. Sourced from ../hardware_deployment/README.md's already-
+# researched figure ("effective range roughly 0-12 cm" for prox.horizontal, confirmed
+# against thymio_swarm_platform's robot.py) -- NOT independently re-measured here.
+THYMIO_IR_RANGE = 0.12            # [m], measured as a SURFACE gap (distance from the
+                                   # sensor's own mounting position to the reflecting
+                                   # surface) -- NOT center-to-center. sensor_model.py
+                                   # subtracts 2*ROBOT_RAD from center distance for
+                                   # neighbor detection accordingly; comparing this
+                                   # value directly to raw center-to-center distance
+                                   # would make IR max range numerically coincide with
+                                   # the collision threshold (both ~= 2*ROBOT_RAD),
+                                   # giving zero pre-collision detection window.
 
 # --- Battery & wind grid (Eq. 6 / Section 3) ---
 # The paper's battery model -- and this module's B/50-1 sensor normalization -- is
@@ -101,8 +136,17 @@ HEBBIAN_MIN_BATTERY = 100.0        # starting battery for the single "weakest" a
 HEBBIAN_NX = 200                   # wind grid resolution; lower to cut simulation cost
 HEBBIAN_NY = 200                   # (the O(Nx) wake-marching loop dominates per-step cost)
 
-# --- Neural controller architecture (Section 2.1) ---
-HEBBIAN_N_INPUTS = 10             # 4 quadrants x (distance, bearing) + battery + compass heading
+# --- Neural controller architecture (Section 2.1, REPLACED beyond the paper: real
+# Thymio II IR sensing instead of the idealized 4-quadrant range/bearing sensor) ---
+# 7 raw IR intensities (Thymio's actual prox.horizontal array -- see sensor_model.py's
+# module docstring and THYMIO_IR_* constants below for sourcing) + battery + compass
+# heading. Drops the idealized 8-value (4-quadrant dist+bearing) neighbor sensor
+# entirely -- see ../hardware_deployment/README.md's "Sensing: OptiTrack substitutes
+# for onboard range/bearing" section, which documents this exact gap: that sensor was
+# never something a real, undeployed-OptiTrack Thymio swarm could compute, since
+# `robot.proximity_horizontal()` is never called anywhere in this project. This
+# variant is the fix -- train against what the robot can actually read.
+HEBBIAN_N_INPUTS = 9              # 7 IR intensities + battery + compass heading
 HEBBIAN_N_HIDDEN = 10             # both hidden layers
 HEBBIAN_N_OUTPUTS = 2             # (v, w)
 HEBBIAN_LEARNING_RATE = 0.1       # mu in delta_w = mu*(A*ni*nj + B*ni + C*nj + D)  (Eq. 1)
@@ -116,7 +160,7 @@ HEBBIAN_WEIGHT_INIT_RANGE = 1.0
 
 # --- ABCD genotype (Section 2.1-2.2) ---
 # 4 coefficients (A, B, C, D) per NN weight, shared across all agents in a swarm:
-# 4 * (10*10 + 10*10 + 10*2) = 880 total parameters.
+# 4 * (9*10 + 10*10 + 10*2) = 840 total parameters (paper/original: 880, at N_INPUTS=10).
 HEBBIAN_N_ABCD = 4 * (HEBBIAN_N_INPUTS * HEBBIAN_N_HIDDEN + HEBBIAN_N_HIDDEN * HEBBIAN_N_HIDDEN
                       + HEBBIAN_N_HIDDEN * HEBBIAN_N_OUTPUTS)
 HEBBIAN_ABCD_INIT_RANGE = 5.0     # ABCD-rules initial mean sampled uniformly from [-this, this]
@@ -158,54 +202,14 @@ HEBBIAN_STAGE_FITNESS_WEIGHTS = {
     #                             battery_w   collision_w   wall_col_mult   include_inter_robot_collision   cohesion_w
     "walk_left":                 (None,        None,         3.0,            False,                          None),
     "save_battery_avoid_wall":   (5.0,         500.0,        3.0,            False,                          None),
-    "save_battery_avoid_all":    (5.0,         15.0,         3.0,            True,                           1.0),
+    "save_battery_avoid_all":    (5.0,         250.0,        3.0,            True,                           None),
 }
-# save_battery_avoid_all's collision_w dropped 250 -> 15 (~16.7x stronger penalty): the
-# n10_seed42 original-sweep genome was found (by direct simulation, not just the fitness
-# formula) to spend ~195s of its ~222s episode with agents in active pairwise collision
-# (mean inter-agent spacing collapsing from 1.69 at spawn to 0.55 by episode end) while
-# covering essentially the same distance as the zero-collision LJ baseline (12.40m vs
-# 12.51m) -- at collision_w=250 that entire 195s of chronic collision cost only ~0.78
-# fitness points against distance's 8.0-per-meter weight, nowhere near enough to compete.
-# At 15, the same 195s would cost ~13 points, roughly comparable to 1.6m of distance --
-# enough to actually matter without reopening the original "just don't move" exploit
-# (HEBBIAN_EFF_DISTANCE_WEIGHT below is unchanged, so distance is still dominant; the
-# floor on how much collision-avoidance can cost is bounded by episode length, not
-# unbounded like the pre-distance-weight battery term was).
-#
-# cohesion_w=2.0 added after that fix backfired: collision_time dropped 195s->30s as
-# intended, but mean battery went DOWN (17.4%->14.8%), not up -- collision penalty alone
-# just spreads agents out (end-of-episode spacing 0.55->0.92) without giving them any
-# reason to stay near each other, so whatever battery benefit the old (colliding) tight
-# formation incidentally provided (most plausibly wind-shielding/drafting) was lost with
-# nothing replacing it. cohesion_dist (stage_fitness()'s docstring) is a PURELY
-# GEOMETRIC term -- mean pairwise inter-agent distance, no velocity/heading/direction
-# component at all -- so it can only ever reward being closer together; it cannot reward
-# moving, turning, or any specific maneuver, leaving whatever behavior achieves that
-# closeness (e.g. drafting formations) entirely up to CMA-ES/Hebbian learning to
-# discover, same as every other term here. Deliberately small relative to the collision
-# penalty: at cohesion_w=2.0, going from spawn spacing (~1.69) to the old tight-cluster
-# spacing (~0.55) is worth only ~0.57 fitness points -- a nudge, not a dominant term --
-# so it shouldn't be able to out-compete collision_w=15's much larger penalty and pull
-# agents back into collision. Untested at other n_agents; the weight may need
-# recalibrating if mean pairwise distance scales with swarm size.
-#
-# UPDATE after 3-seed check at cohesion_w=2.0 (n10, seeds 42/123/777): the effect is NOT
-# consistent across seeds. seed42: battery 17.4%->22.2% (better), dist 12.40->10.38m,
-# collision_time 195.5->96.0s. seed123: battery 10.3%->9.2% (WORSE), dist ~flat,
-# collision_time 131.5->163.0s (WORSE -- cohesion out-pulled the collision penalty here).
-# seed777: battery 33.4%->17.2% (much WORSE, nearly halved), dist 7.24->9.69m (better),
-# collision_time 326.0->92.5s (much better). Only seed42 got the intended outcome; the
-# other two show cohesion interacting unpredictably with whatever local optimum each
-# seed's avoid_wall genome started from -- in seed123's case actively re-opening
-# collisions cohesion_w=2.0 was supposed to stay clear of. cohesion_w=1.0 here is a
-# follow-up tuning attempt: half the pull, testing whether a gentler nudge keeps
-# collision_time closer to the collision-only fix's ~30s baseline (across seeds) while
-# still buying back some battery, rather than cohesion sometimes overpowering the
-# collision penalty as seen at w=2.0. Single-seed test (n10_seed42) pending re-validation
-# across seeds if promising -- the 2.0 result above shows single-seed results here are
-# not reliable evidence of a weight actually working.
-
+# Reset to the ORIGINAL/paper-default weights (collision_w=250, no cohesion term) --
+# deliberately NOT carrying over the collision_w=15/cohesion_w tuning from the
+# collision+cohesion investigation (../experiment/config.py). This variant tests a
+# different, orthogonal question (sensing realism, see sensor_model.py) and mixing in
+# those still-unvalidated fitness-weight changes would confound which change caused
+# whatever difference shows up in results.
 # Explicit distance weight, mirroring the LJ model's own EFF_DISTANCE_WEIGHT --
 # Table 2's literal formula has no such multiplier (dist_travelled has an implicit
 # weight of 1.0), which measurably let CMA-ES discover that barely moving is a cheap way

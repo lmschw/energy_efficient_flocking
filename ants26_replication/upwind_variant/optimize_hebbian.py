@@ -1,7 +1,12 @@
 """Staged CMA-ES training for the Hebbian ABCD controller (paper Sections 2.2-2.3).
 
+VARIANT of ../experiment/: stage 1 is "walk_upwind" (wind enabled, fitness = progress
+against the wind, via config.WIND_DIRECTION) instead of the original "walk_left" (wind
+disabled, fitness = raw distance along a hardcoded axis) -- see config.py's module
+docstring for the full rationale.
+
 Three sequential stages of increasing task complexity (Table 2 / Fig. 1):
-  1. walk_left                  -- wind disabled, fitness = distance only
+  1. walk_upwind                -- wind enabled, fitness = progress against the wind only
   2. save_battery_avoid_wall    -- wind enabled, + battery term, + wall-collision penalty
   3. save_battery_avoid_all     -- wind enabled, + battery term, + wall AND inter-robot collision penalty
 
@@ -57,11 +62,11 @@ def fitness_wrapper(genome):
     for r in range(active_n_repeats):
         seed = active_seed_base + current_candidate * 1000 + r  # distinct seed per repeat, per candidate
         try:
-            dist, batt, ct, wct, coh = simulate_hebbian_episode(
+            dist, batt, ct, wct = simulate_hebbian_episode(
                 rules, seed=seed, n_agents=active_n_agents, wind_enabled=wind_enabled,
                 max_battery=active_max_battery, min_battery=active_min_battery,
                 nx=active_nx, ny=active_ny, use_battery_sensor=active_use_battery_sensor)
-            effs.append(stage_fitness(dist, batt, ct, wct, coh, active_stage))
+            effs.append(stage_fitness(dist, batt, ct, wct, active_stage))
         except Exception as e:
             print(f"\n⚠️  Candidate {current_candidate} repeat {r} failed "
                   f"({type(e).__name__}: {e}) -- treating as worst-case for this repeat")
@@ -220,7 +225,7 @@ if __name__ == "__main__":
                               "normal behavior. Use this to re-run a later stage with a different "
                               "--popsize/--maxiter against an existing, already-trained earlier stage "
                               "-- e.g. --stages save_battery_avoid_all --init-genome "
-                              "some_dir/hebbian_walk_left_best.npy --maxiter 200 -- without needing to "
+                              "some_dir/hebbian_walk_upwind_best.npy --maxiter 200 -- without needing to "
                               "re-run (or touch the output directory of) that earlier stage at all.")
     args = parser.parse_args()
 

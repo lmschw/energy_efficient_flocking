@@ -61,8 +61,6 @@ def _move(agents, vel, dt, n_agents, min_dist, walls):
     D = np.linalg.norm(agents_xy[:, None, :] - agents_xy[None, :, :], axis=-1)
     close_agents = (D < min_dist) & (~np.eye(n_agents, dtype=bool))
     pair_collisions = int(np.count_nonzero(np.triu(close_agents, k=1)))
-    iu = np.triu_indices(n_agents, k=1)
-    mean_pairwise_dist = float(np.mean(D[iu])) if n_agents > 1 else 0.0
 
     wall_margin = config.ROBOT_RAD * config.WALL_MARGIN_FACTOR
     wall_hits = int(np.sum((agents[:, 0] > walls[1] - wall_margin) |
@@ -86,7 +84,7 @@ def _move(agents, vel, dt, n_agents, min_dist, walls):
     vel_actual[:, 0] = dist / dt
     vel_actual[np.isnan(vel_actual[:, 2]), 2] = 0.0
 
-    return vel_actual, agents, xRange, pair_collisions, wall_hits, mean_pairwise_dist
+    return vel_actual, agents, xRange, pair_collisions, wall_hits
 
 
 def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=True,
@@ -114,16 +112,10 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         the Hebbian update), while keeping the genome the same size/shape as the
         battery-aware controller so the two remain directly comparable.
 
-    Returns (dist_travelled, average_batt, collision_time, wall_collision_time,
-    cohesion_dist[, telemetry]). cohesion_dist is the episode-averaged mean pairwise
-    inter-agent distance (mean over all agent pairs, mean over all steps) -- a pure
-    geometric closeness measure, not a velocity/heading term, so rewarding a LOW value
-    only ever pulls agents toward each other; it carries no information about which
-    direction to move or how to get there, so any resulting formation behavior (e.g.
-    drafting) is left entirely to CMA-ES/Hebbian learning to discover, same as the
-    existing terms. telemetry (only if record_trajectory/record_battery/
-    record_wind_exposure) is a dict with "positions" ((n_steps, n_agents, 2) or None),
-    "battery" ((n_steps, n_agents) or None), and "wind_pct" ((n_steps, n_agents) or None).
+    Returns (dist_travelled, average_batt, collision_time, wall_collision_time[, telemetry]).
+    telemetry (only if record_trajectory/record_battery/record_wind_exposure) is a
+    dict with "positions" ((n_steps, n_agents, 2) or None), "battery" ((n_steps,
+    n_agents) or None), and "wind_pct" ((n_steps, n_agents) or None).
     """
     if seed is not None:
         np.random.seed(seed)
@@ -153,8 +145,6 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
 
     pair_collision_counter = 0
     wall_collision_counter = 0
-    cohesion_dist_sum = 0.0
-    cohesion_dist_steps = 0
     batteryEmpty = False
     positions_log = [agents[:, 0:2].copy()] if record_trajectory else None
     battery_log = [agents[:, 3].copy()] if record_battery else None
@@ -172,12 +162,9 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             vel[i, 1] = w_i
             weights[i] = (w1n, w2n, w3n)
 
-        vel_actual, agents, xRange, pair_hits, wall_hits, mean_pairwise_dist = _move(
-            agents, vel, dt, n_agents, min_dist, walls)
+        vel_actual, agents, xRange, pair_hits, wall_hits = _move(agents, vel, dt, n_agents, min_dist, walls)
         pair_collision_counter += pair_hits
         wall_collision_counter += wall_hits
-        cohesion_dist_sum += mean_pairwise_dist
-        cohesion_dist_steps += 1
         if record_trajectory:
             positions_log.append(agents[:, 0:2].copy())
 
@@ -197,10 +184,11 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
         batteryEmpty = np.any(agents[:, 3] <= 0.0)
 
     average_batt = np.mean(agents[:, 3])
-    dist_travelled = -np.mean(agents[:, 0])
+    # Progress along WIND_DIRECTION (config.py) rather than a bare "-x" -- see that
+    # constant's comment for why this is documentation, not a generalization.
+    dist_travelled = float(np.dot([np.mean(agents[:, 0]), np.mean(agents[:, 1])], config.WIND_DIRECTION))
     collision_time = pair_collision_counter * dt
     wall_collision_time = wall_collision_counter * dt
-    cohesion_dist = cohesion_dist_sum / cohesion_dist_steps if cohesion_dist_steps else 0.0
 
     if record_trajectory or record_battery or record_wind_exposure:
         telemetry = {
@@ -208,8 +196,8 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             "battery": np.array(battery_log) if record_battery else None,
             "wind_pct": np.array(wind_pct_log) if record_wind_exposure else None,
         }
-        return dist_travelled, average_batt, collision_time, wall_collision_time, cohesion_dist, telemetry
-    return dist_travelled, average_batt, collision_time, wall_collision_time, cohesion_dist
+        return dist_travelled, average_batt, collision_time, wall_collision_time, telemetry
+    return dist_travelled, average_batt, collision_time, wall_collision_time
 
 
 def _plot_hebbian_frame(ax, fig, agents, r, max_battery, t, video_writer, wind_field=None):
@@ -217,8 +205,9 @@ def _plot_hebbian_frame(ax, fig, agents, r, max_battery, t, video_writer, wind_f
     drawing as simulation_free_global_mod_2_LJ.py's plot_all(), but (a) takes max_battery
     as a parameter instead of hardcoding the LJ model's config.MAX_BATTERY (Hebbian
     battery is on a 0-100 scale, not the LJ model's 150), and (b) the wind-field
-    background is optional, since stage 1 (walk_left) trains with wind disabled and has
-    no wind field to show."""
+    background is optional -- kept that way even though this variant's stage 1
+    (walk_upwind) trains with wind enabled, since render_hebbian_episode_video() is also
+    used for ad-hoc playback of individual genomes where wind may still be off."""
     ax.clear()
     if wind_field is not None:
         yVals, xVals, powerVals = wind_field
@@ -327,7 +316,7 @@ def render_hebbian_episode_video(abcd_rules, seed=None, n_agents=None, wind_enab
             vel[i, 1] = w_i
             weights[i] = (w1n, w2n, w3n)
 
-        vel_actual, agents, xRange, pair_hits, wall_hits, _ = _move(agents, vel, dt, n_agents, min_dist, walls)
+        vel_actual, agents, xRange, pair_hits, wall_hits = _move(agents, vel, dt, n_agents, min_dist, walls)
         pair_collision_counter += pair_hits
         wall_collision_counter += wall_hits
 
@@ -347,7 +336,7 @@ def render_hebbian_episode_video(abcd_rules, seed=None, n_agents=None, wind_enab
         _plot_hebbian_frame(ax, fig, agents, robot_rad, max_battery, t, v_out, wind_field)
 
     average_batt = np.mean(agents[:, 3])
-    dist_travelled = -np.mean(agents[:, 0])
+    dist_travelled = float(np.dot([np.mean(agents[:, 0]), np.mean(agents[:, 1])], config.WIND_DIRECTION))
     collision_time = pair_collision_counter * dt
     wall_collision_time = wall_collision_counter * dt
 
@@ -360,7 +349,7 @@ def render_hebbian_episode_video(abcd_rules, seed=None, n_agents=None, wind_enab
     return dist_travelled, average_batt, collision_time, wall_collision_time
 
 
-def stage_fitness(dist_travelled, average_batt, collision_time, wall_collision_time, cohesion_dist, stage):
+def stage_fitness(dist_travelled, average_batt, collision_time, wall_collision_time, stage):
     """Table 2's per-stage fitness formula, extended with an explicit distance weight
     (config.HEBBIAN_EFF_DISTANCE_WEIGHT) so distance-travelled dominates battery
     preservation -- mirroring the LJ model's own EFF_DISTANCE_WEIGHT fix for the
@@ -369,15 +358,8 @@ def stage_fitness(dist_travelled, average_batt, collision_time, wall_collision_t
 
     eff = HEBBIAN_EFF_DISTANCE_WEIGHT*dist + avg_batt/battery_w
           - (wall_col_mult*wall_col_time [+ collision_time]) / collision_w
-          - cohesion_dist / cohesion_w
-
-    cohesion_dist is a pure geometric closeness term (mean pairwise inter-agent
-    distance) -- purely positional, carries no velocity/heading/direction information,
-    so it can only ever pull agents toward each other; it can't reward "moving" in any
-    sense. See HEBBIAN_STAGE_FITNESS_WEIGHTS's comment for why this is separate from,
-    and much smaller than, the collision penalty above.
     """
-    battery_w, collision_w, wall_col_mult, include_inter_robot, cohesion_w = config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage]
+    battery_w, collision_w, wall_col_mult, include_inter_robot = config.HEBBIAN_STAGE_FITNESS_WEIGHTS[stage]
     eff = config.HEBBIAN_EFF_DISTANCE_WEIGHT * dist_travelled
     if battery_w is not None:
         eff += average_batt / battery_w
@@ -386,6 +368,4 @@ def stage_fitness(dist_travelled, average_batt, collision_time, wall_collision_t
         if include_inter_robot:
             penalty += collision_time
         eff -= penalty / collision_w
-    if cohesion_w is not None:
-        eff -= cohesion_dist / cohesion_w
     return eff

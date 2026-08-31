@@ -1,5 +1,13 @@
 """Staged CMA-ES training for the Hebbian ABCD controller (paper Sections 2.2-2.3).
 
+VARIANT of ../experiment/: sensor_model.get_sensor_data() is REPLACED entirely --
+7 short-range Thymio II IR proximity readings (config.THYMIO_IR_*) instead of the
+idealized 4-quadrant range/bearing neighbor sensor -- see sensor_model.py's module
+docstring and config.py's "Neural controller architecture" comment for the full
+rationale (closing the sim-to-real sensing gap documented in
+../hardware_deployment/README.md). HEBBIAN_N_INPUTS=9 (was 10); everything else
+(curriculum, fitness weights, wind/battery physics) is unchanged from ../experiment/.
+
 Three sequential stages of increasing task complexity (Table 2 / Fig. 1):
   1. walk_left                  -- wind disabled, fitness = distance only
   2. save_battery_avoid_wall    -- wind enabled, + battery term, + wall-collision penalty

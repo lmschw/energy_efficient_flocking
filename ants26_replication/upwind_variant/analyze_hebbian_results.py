@@ -50,7 +50,7 @@ def load_stage_genome(results_dir, stage, suffix=""):
 def _discover_available_stages(results_dir, suffix=""):
     """Returns the subset of config.HEBBIAN_STAGES (in that order) that actually have a
     saved genome in results_dir -- lets every experiment below adapt to whatever subset
-    of stages was actually trained (e.g. a --stages walk_left save_battery_avoid_all run
+    of stages was actually trained (e.g. a --stages walk_upwind save_battery_avoid_all run
     that deliberately skips save_battery_avoid_wall) instead of assuming all three exist."""
     available = [stage for stage in config.HEBBIAN_STAGES
                  if os.path.exists(os.path.join(results_dir, f"hebbian_{stage}{suffix}_best.npy"))]
@@ -114,7 +114,7 @@ def run_battery_awareness_experiment(rules, n_sims, n_agents, seed_start, out_pa
     def _condition(min_battery, label):
         exposures = []
         for s in range(n_sims):
-            _, _, _, _, _, tele = simulate_hebbian_episode(
+            _, _, _, _, tele = simulate_hebbian_episode(
                 rules, seed=seed_start + s, n_agents=n_agents, wind_enabled=True,
                 max_battery=100.0, min_battery=min_battery, record_wind_exposure=True)
             exposures.append(float(np.mean(tele["wind_pct"][:, -1])))
@@ -158,7 +158,7 @@ def run_trajectory_comparison(controllers, agent_counts, seed, out_path):
     for row, (label, rules) in enumerate(controllers.items()):
         for col, n_agents in enumerate(agent_counts):
             ax = axes[row][col]
-            _, _, _, _, _, tele = simulate_hebbian_episode(
+            _, _, _, _, tele = simulate_hebbian_episode(
                 rules, seed=seed, n_agents=n_agents, wind_enabled=True, record_trajectory=True)
             positions = tele["positions"]
             for a in range(n_agents):
@@ -193,7 +193,7 @@ def run_trajectory_repeats(rules, n_agents, wind_enabled, n_repeats, seed_start,
     for i in range(n_repeats):
         seed = seed_start + i
         ax = axes[i // n_cols][i % n_cols]
-        _, _, _, _, _, tele = simulate_hebbian_episode(
+        _, _, _, _, tele = simulate_hebbian_episode(
             rules, seed=seed, n_agents=n_agents, wind_enabled=wind_enabled, record_trajectory=True)
         positions = tele["positions"]
         for a in range(n_agents):
@@ -252,7 +252,7 @@ def main():
 
         def _make_hebbian_runner(rules):
             def _run(seed):
-                dist, batt, _, _, _ = simulate_hebbian_episode(
+                dist, batt, _, _ = simulate_hebbian_episode(
                     rules, seed=seed, n_agents=args.n_agents, wind_enabled=True)
                 return dist, batt
             return _run

@@ -8,3 +8,10 @@ initial_implementation/results/
 *.cpyc
 *.mp4
 *.m
+*.txt
+*.npy
+*.csv
+*.png
+*.log
+*.json
+*.txt

@@ -162,7 +162,7 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
     vel = np.zeros((n_agents, 2))
 
     while not batteryEmpty:
-        sensor_inputs = get_sensor_data(agents)  # (10, n_agents)
+        sensor_inputs = get_sensor_data(agents)  # (9, n_agents)
         if not use_battery_sensor:
             sensor_inputs[8, :] = 0.0
         for i in range(n_agents):
