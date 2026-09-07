@@ -106,15 +106,24 @@ class _ConfigOverride:
             setattr(config, name, value)
 
 
+BATTERY_SCALE = {  # metrics.json's "batt_pct" = average_batt / this * 100 -- see module docstring
+    "lj_baseline": config.MAX_BATTERY,             # 150.0, the LJ model's own scale
+    "pre_clamp_best": config.HEBBIAN_MAX_BATTERY,  # 100.0
+    "safety_clamp_best": config.HEBBIAN_MAX_BATTERY,
+}
+
+
 def run_trajectory(condition, n_agents, seed=SEED):
-    """Returns (positions, dt) -- positions is (n_steps+1, n_agents, 2)."""
+    """Returns (positions, dt, dist_travelled, average_batt) -- positions is
+    (n_steps+1, n_agents, 2); average_batt is on that condition's own raw scale (see
+    BATTERY_SCALE, not yet converted to a percentage)."""
     dt = config.DT
     if condition == "lj_baseline":
         rules = json.load(open(_BASELINE_RULES_PATH))
         with _ConfigOverride(HEBBIAN_NX=WIND_GRID, HEBBIAN_NY=WIND_GRID):
-            _, _, _, _, tele = simulate_lj_baseline(
+            _, dist, batt, _, tele = simulate_lj_baseline(
                 rules=rules, seed=seed, n_agents=n_agents, record_trajectory=True)
-        return tele["positions"], dt
+        return tele["positions"], dt, dist, batt
 
     overrides = _CONDITION_OVERRIDES[condition]
     genome = np.load(_GENOME_PATH[condition])
@@ -128,10 +137,10 @@ def run_trajectory(condition, n_agents, seed=SEED):
         cfg_patch["HEBBIAN_RESOLVE_COLLISIONS_STRENGTH"] = overrides["resolve_strength"]
         cfg_patch["HEBBIAN_RESOLVE_COLLISIONS_MAX_ITER"] = overrides["resolve_max_iter"]
     with _ConfigOverride(**cfg_patch):
-        _, _, _, _, _, _, tele = simulate_hebbian_episode(
+        dist, batt, _, _, _, _, tele = simulate_hebbian_episode(
             rules, seed=seed, n_agents=n_agents, wind_enabled=True,
             nx=WIND_GRID, ny=WIND_GRID, record_trajectory=True)
-    return tele["positions"], dt
+    return tele["positions"], dt, dist, batt
 
 
 # --- Shared derived signals: per-step bearing (movement direction) and front/back rank ---
@@ -321,7 +330,7 @@ def hierarchy_summary(leader_strength):
 # --- Orchestration ---
 
 def analyze(condition, n_agents, seed=SEED):
-    positions, dt = run_trajectory(condition, n_agents, seed=seed)
+    positions, dt, dist_travelled, average_batt = run_trajectory(condition, n_agents, seed=seed)
     ranks, bearing = _front_rank_series(positions)
 
     recip = reciprocity_index(ranks, dt)
@@ -334,6 +343,8 @@ def analyze(condition, n_agents, seed=SEED):
 
     return {
         "n_agents": n_agents, "dt": dt, "positions": positions,
+        "dist_travelled": dist_travelled, "average_batt": average_batt,
+        "battery_pct": average_batt / BATTERY_SCALE[condition] * 100.0,
         "reciprocity": recip, "occupancy": occ, "persistence": persist,
         "leader_strength": leader_strength, "delay": delay, "hierarchy": hierarchy,
     }

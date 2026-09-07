@@ -24,11 +24,15 @@ plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.linestyle": ":"
 
 
 def _savefig(fig, out_dir, name, rect=None):
-    path = os.path.join(out_dir, name)
+    """Saves .png (quick viewing), .pdf (LaTeX/Overleaf import), and .svg (editable vector)
+    next to each other under the same basename."""
     fig.tight_layout(rect=rect)
-    fig.savefig(path, dpi=150)
+    stem = os.path.join(out_dir, os.path.splitext(name)[0])
+    fig.savefig(stem + ".png", dpi=150)
+    fig.savefig(stem + ".pdf")
+    fig.savefig(stem + ".svg")
     plt.close(fig)
-    print(f"Saved {path}")
+    print(f"Saved {stem}.{{png,pdf,svg}}")
 
 
 def _strip_box(ax, data_by_condition, ylabel, title):
