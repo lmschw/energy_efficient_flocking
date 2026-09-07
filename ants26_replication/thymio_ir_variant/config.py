@@ -38,8 +38,10 @@ WIND_TRACKING_MAX_SPAN = 9.8         # cap on the swarm's own x-extent within th
 
 # --- Wind / wake ray-tracing (RayTraceCircularRobots) ---
 UINF = 100.0                  # freestream ("full power") wind value
-KAPPA = 20.0                  # drag force scale factor -- battery drain from wind exposure enters
-                               # as v_rel^2, so this is the strongest lever on drain rate
+KAPPA = 10.0                   # drag force scale factor -- battery drain from wind exposure enters
+                               # as v_rel^2, so this is the strongest lever on drain rate.
+                               # Set to the paper's own stated value (Eq. 3), matching the
+                               # ants26_replication/experiment/ paperbattery experiment.
 WAKE_RECOVERY_RATE = 1.0      # fraction of wake gap recovered per grid step outside a robot's radius
 WAKE_PERCENT_DROP = 0.25      # wind intensity drop on entering/switching a robot's wake
 WAKE_MAX_WALL_SPAN = 0.7      # controls how sharply the wall effect kicks in (lower = more wall effect)
@@ -61,7 +63,9 @@ DRAG_COEFFICIENT_AREA = 0.0045          # effective drag coefficient * frontal a
 # --- Battery drainage (batterydrainage) ---
 BATTERY_WHEEL_POWER_DIVISOR = 4.0    # divisor applied to summed absolute wheel speeds
 BATTERY_MIN_DRAIN = 0.10             # floor on per-step drain (idle power draw)
-BATTERY_DRAIN_SCALE = 2.0            # overall drain multiplier
+BATTERY_DRAIN_SCALE = 1.0            # overall drain multiplier -- matches the paper's Eq. 6
+                                      # literally (B -= P_use*dt, no extra scale), same fix as
+                                      # ants26_replication/experiment/'s paperbattery experiment.
 
 # --- Video output (visualize_hebbian.py) ---
 HEBBIAN_VIDEO_PATH = "hebbian_alone.mp4"
@@ -221,7 +225,14 @@ HEBBIAN_STAGE_FITNESS_WEIGHTS = {
 # is a deliberate, disclosed deviation from Table 2's literal formula, not a literal
 # replication -- document it in the paper the same way the LJ model's weighting choice
 # is documented in initial_implementation/experiment/config.py.
-HEBBIAN_EFF_DISTANCE_WEIGHT = 8.0
+HEBBIAN_EFF_DISTANCE_WEIGHT = 16.0
+# Raised 8.0 -> 16.0 to match ants26_replication/experiment/'s established-best value (found
+# via a 4/8/16/32 sweep across 3 seeds each earlier this session -- weight=16 lowered average
+# collision time and improved/tied average battery vs weight=8, see that constant's own
+# comment in experiment/config.py for the full sweep data). Applied here alongside the
+# KAPPA/BATTERY_DRAIN_SCALE fixes above so this variant's newest run uses the same "current
+# best" settings as everything else, per the user's request to test Thymio-style sensing
+# against "the newest version" rather than this variant's original from-scratch baseline.
 
 # =====================================================================================
 # --- LJ Table-3 baseline (lj_baseline.py) -- used only by analyze_hebbian_results.py's

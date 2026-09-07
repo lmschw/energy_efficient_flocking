@@ -1,6 +1,7 @@
 .venv/
 venv/
 outcmaes/
+results/
 __pycache__/
 optimization_results/
 ants-2026-polimi-energy-efficient-flocking-main/
@@ -9,9 +10,6 @@ initial_implementation/results/
 *.mp4
 *.m
 *.txt
-*.npy
-*.csv
-*.png
 *.log
 *.json
 *.txt
