@@ -35,6 +35,7 @@ Methodology / Simulation Results write-up. All figures referenced below live in
 \texttt{paper\_fig5a\_distance\_vs\_battery\_n10} & Fig.~5a analog & \S\ref{sec:paper-figs} \\
 \texttt{paper\_fig6\_trajectory\_comparison} & Fig.~6 analog & \S\ref{sec:paper-figs} \\
 \texttt{safety\_clamp\_scale\_function} & clamp scale function $C(g)$ & \S\ref{sec:clamp-formula} \\
+\texttt{all\_conditions\_distance\_vs\_battery} & all 7 conditions compared & \S\ref{sec:upwind-results} \\
 \texttt{metric3\_front\_occupancy} & front-rank occupancy \& flatness & \S\ref{sec:metric3} \\
 \texttt{metric3\_exchange\_rate} & raw exchange rate vs.\ swarm size & \S\ref{sec:metric3} \\
 \texttt{metric3\_front\_id\_timeline\_n10} & raw front-identity timeline & \S\ref{sec:metric3} \\
@@ -185,6 +186,70 @@ $\sim$0--1.5\,m and collision time to explode, as the controller kept commanding
 moves into neighbors, got braked, and gridlocked in a standoff for the rest of the episode.
 CMA-ES needs to experience the clamp's consequences \emph{during} evolution to learn to route
 around it, rather than have it imposed after the fact.
+
+\subsubsection{Ablation: replacing walk\_left with walking into the wind}
+\label{sec:upwind-ablation}
+A natural question about stage 1 of the curriculum (\S\ref{sec:curriculum}): \texttt{walk\_left}
+trains a fixed heading in still air (wind disabled), specifically to avoid CMA-ES discovering
+the trivial strategy of just riding a tailwind. An alternative, more physically motivated stage
+1 -- \texttt{walk\_upwind} -- trains the same net-progress objective but with wind
+\emph{enabled}, rewarding progress specifically \emph{against} the wind:
+\begin{equation}
+\text{dist} = \big(\overline{x},\, \overline{y}\big) \cdot \mathbf{d}_{\text{wind}}, \qquad \mathbf{d}_{\text{wind}} = (-1, 0),
+\label{eq:wind-direction}
+\end{equation}
+where $(\overline{x},\overline{y})$ is the swarm centroid at episode end. Because the wind
+blows toward $+x$ (\texttt{wind\_physics.py}'s wake propagates left-to-right), $\mathbf{d}_{\text{wind}}=(-1,0)$
+numerically reduces to the same $-x$ progress metric \texttt{walk\_left} already used --
+Eq.~\ref{eq:wind-direction} is written as a general dot product only so the ``against the
+wind'' framing is explicit; the sole actual behavior change is wind being \emph{on} during
+stage 1, with battery drain the only (indirect) cue available for ``am I currently making
+upwind progress,'' since no explicit wind/compass sensor was added (Table~\ref{tab:stage-weights}'s
+weights are otherwise unchanged for this stage). This was tried once before, in an older fork
+(\texttt{ants26\_replication/upwind\_variant/}) that predates the safety-clamp mechanisms and
+the \texttt{KAPPA}/$w_d$ recalibration in \S\ref{sec:evolution} -- at $n{=}10$, seed 42, it
+reached final-stage efficiency 99.33 vs. \texttt{walk\_left}'s 109.14 under that older physics
+(a $\sim$91\%-comparable, but real, gap).
+
+To re-test this under the \emph{current} pipeline, a new fork
+(\texttt{ants26\_replication/upwind\_safety\_variant/}) applies the same stage-1 substitution
+on top of the current, safety-clamp-equipped \texttt{experiment/} package, and a $2\times2$
+design was run -- \{\texttt{walk\_left}, \texttt{walk\_upwind}\} $\times$ \{clamp, no clamp\}
+-- all four at $n{=}10$, seed 42, current physics ($\kappa{=}10$, $w_d{=}16$), for a clean,
+single-variable comparison (Table~\ref{tab:upwind-ablation}).
+
+\begin{table}[h]
+\centering
+\caption{Final-stage (\texttt{save\_battery\_avoid\_all}) \texttt{best\_efficiency}, $n{=}10$, seed 42, current physics.}
+\label{tab:upwind-ablation}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+ & with clamp & without clamp \\
+\midrule
+\texttt{walk\_left} & 224.46 & 245.34 \\
+\texttt{walk\_upwind} & 220.15 & 242.73 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\noindent With the clamp active, \texttt{walk\_upwind} reaches 98.1\% of \texttt{walk\_left}'s
+efficiency (220.15 / 224.46); without it, 98.9\% (242.73 / 245.34) -- comparable either way,
+and a tighter gap than the older pipeline's $\sim$91\%. The clamp costs \texttt{walk\_upwind}
+$\sim$9\% raw efficiency (242.73 $\to$ 220.15) and \texttt{walk\_left} a near-identical
+$\sim$8.5\% (245.34 $\to$ 224.46) -- consistent with \S\ref{sec:why-two-genomes}'s general
+finding that the clamp trades some raw efficiency for guaranteed collision safety rather than
+being free (collision time already enters the efficiency formula, Eq.~\ref{eq:stage-fitness},
+so this is a real trade, not double-counting). With all four cells filled, the clamp's cost
+reads as a \textbf{general property of the safety layer, not specific to either curriculum} --
+the two curricula sit within 1\,pp of each other under both clamp settings, while the clamp
+itself moves either curriculum by $\sim$8.5--9\%.
+
+All four resulting genomes are evaluated in \S\ref{sec:upwind-results} alongside the original
+three conditions, with per-\texttt{n\_agents} videos/metrics saved in
+\texttt{hardware\_transfer\_test/\{upwind\_clamp, upwind\_no\_clamp, walk\_left\_n10\_clamp,
+walk\_left\_n10\_no\_clamp\}/} -- the same layout as \texttt{lj\_baseline}/\texttt{pre\_clamp\_best}/
+\texttt{safety\_clamp\_best}, so every candidate genome for hardware deployment lives under
+this one directory.
 
 \subsection{Simulation environment}
 \label{sec:env}
@@ -435,6 +500,38 @@ formation reconfiguration is a collective, not individual, behavior;
 instead.}
 \label{fig:fig6}
 \end{figure}
+
+\subsection{Curriculum ablation: walking into the wind}
+\label{sec:upwind-results}
+Following up on \S\ref{sec:upwind-ablation}'s training-efficiency comparison, all four new
+genomes (plus the original three) were evaluated together on distance travelled vs.\ remaining
+battery -- 30 seeded runs each (seeds 1000--1029, the same set used by every other seed-sweep
+figure in this document), all at $n_{\text{agents}}=10$ (a genome's swarm size at
+\emph{training} time doesn't constrain what size it can be \emph{evaluated} at).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/all_conditions_distance_vs_battery}
+\caption{All seven conditions, 30 runs each, $n=10$, with 1-std ellipses. Note
+\texttt{pre\_clamp\_best}/\texttt{safety\_clamp\_best} were trained at $n=20$ and are
+evaluated here at $n=10$ for comparability with the $n=10$-native genomes -- the visibly
+larger distance they cover here is at least partly an $n=20\to n=10$ generalization effect,
+not purely a curriculum/clamp effect, and shouldn't be read as directly commensurate with the
+four $n=10$-native genomes without that caveat.}
+\label{fig:all-conditions}
+\end{figure}
+
+\noindent Per-\texttt{n\_agents}$\in\{2,3,4,5,10,20\}$ videos, battery plots, and
+\texttt{metrics.json} for all four new genomes are saved under
+\texttt{hardware\_transfer\_test/\{upwind\_clamp, upwind\_no\_clamp, walk\_left\_n10\_clamp,
+walk\_left\_n10\_no\_clamp\}/n\textless N\textgreater/} -- generated by
+\texttt{generate\_new\_conditions.py}, reusing \texttt{experiment/}'s own video renderer (the
+genome format, network, and update rule are identical regardless of which package trained a
+given genome, so no separate rendering path was needed for the \texttt{upwind\_safety\_variant}-
+trained genomes). \textbf{This is the single directory to look in when deciding which genome to
+deploy to hardware}: every candidate -- baseline, both original clamp conditions, and all four
+new ablation genomes -- has the same \texttt{genome\_trained\_n\textless N\textgreater.npy} +
+per-size video/metrics layout side by side.
 
 \clearpage
 \subsection{Metric 3 -- front-rank occupancy \& exchange rate}
