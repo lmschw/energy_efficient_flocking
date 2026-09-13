@@ -1,17 +1,20 @@
 """Two functions, both copies of simulation_hebbian.simulate_hebbian_episode() with exactly
-one change: any agent within min_dist of another agent AT THE END of a step has that step's
-battery drain partially or fully refunded, while the fitness-visible collision_time
+one change: any agent within min_dist of another agent AT THE END of a step has the
+DRAG/MOVEMENT portion of that step's battery drain partially or fully refunded -- but NEVER
+the unconditional idle-power floor (BATTERY_MIN_DRAIN), which is always paid regardless of
+collision state (see "IMPORTANT" below for why). The fitness-visible collision_time
 bookkeeping (and therefore the flat collision_w penalty in stage_fitness()) is completely
-unaffected in either case.
+unaffected by any of this in either function.
 
-  - simulate_hebbian_episode_no_drain_on_collision: FULL refund (drain_fraction=0.0 hardcoded)
-    -- the original version, job 6 (2026-09-09/10).
-  - simulate_hebbian_episode_partial_drain_on_collision: PARTIAL refund, `drain_fraction`
-    parameter (e.g. 0.1 = colliding agents still pay 10% of normal drain, 90% refunded) --
-    the follow-up requested after job 6, to see whether a small non-zero cost still nudges
-    CMA-ES away from gratuitous collision while keeping most of the drain-holiday benefit.
-    Kept as a SEPARATE function (not a parameterized version of the first) so job 6's already-
-    validated behavior can never be accidentally altered by a later edit made for this one.
+  - simulate_hebbian_episode_no_drain_on_collision: FULL refund of the above-floor portion
+    (drain_fraction=0.0 hardcoded) -- job 6 (2026-09-09/10).
+  - simulate_hebbian_episode_partial_drain_on_collision: PARTIAL refund of the above-floor
+    portion, `drain_fraction` parameter (e.g. 0.1 = colliding agents still pay 10% of that
+    portion, 90% refunded) -- the follow-up requested after job 6, to see whether a small
+    non-zero cost still nudges CMA-ES away from gratuitous collision while keeping most of
+    the drain-holiday benefit. Kept as a SEPARATE function (not a parameterized version of
+    the first) so job 6's already-validated behavior can never be accidentally altered by a
+    later edit made for this one.
 
 This isolates a question raised after `pre_clamp_best` (no clamp, collision_w=250 penalty,
 202.5s of collision_time at n=10) came in well below the LJ baseline on battery despite
@@ -21,11 +24,22 @@ experiences -- so it was an open question whether the battery shortfall is comin
 something in the ordinary drain formula behaving differently near collisions (e.g. erratic
 velocity/heading during close encounters), independent of the collision_w penalty itself.
 
-Both include the same MAX_STEPS safety cap (see job 6's post-mortem in project memory): a
-persistent near-collision can make an agent's battery last far longer than normal before
-depleting, which is pure wasted simulation time whenever the fitness formula doesn't reward
-that survival (e.g. walk_left, pure distance) -- capping episode length bounds the cost of
-that regardless of drain_fraction.
+IMPORTANT -- why the idle floor is never refunded, even at drain_fraction=0.0: job 6's FIRST
+attempt refunded 100% of drain including the floor, which meant a permanently-colliding agent
+paid literally zero net drain per step. CMA-ES found and exploited this immediately: cluster
+into permanent mass collision (all pairs colliding every step) and cruise at max speed for as
+long as the simulation allows -- confirmed via the actual result, dist=264m (13x the LJ
+baseline), collision_time=78306s, hitting the 5000-step MAX_STEPS cap exactly, having received
+13640.8 units of refunded drain. That's not a flocking strategy, it's fitness-hacking the
+refund mechanic itself. Always charging the floor bounds the worst case mathematically: even
+at drain_fraction=0.0, max possible episode length is
+HEBBIAN_MAX_BATTERY / (BATTERY_DRAIN_SCALE * BATTERY_MIN_DRAIN * DT) = 100/(2.0*0.10*0.5) =
+1000 steps -- comparable to a legitimately long episode, not an order of magnitude beyond one.
+
+Both also include a MAX_STEPS=5000 safety cap as a secondary backstop (see job 6's post-mortem
+in project memory for the original, floor-unaware motivation) -- with the floor fix above, the
+mathematical 1000-step bound makes this now rarely if ever binding; it's kept as cheap insurance
+rather than the load-bearing safeguard it mistakenly was before.
 
 Not merged into simulation_hebbian.py itself, to keep that module's return signature/behavior
 byte-for-byte what hardware_transfer_test/'s reproduction recipe depends on.
@@ -131,13 +145,23 @@ def simulate_hebbian_episode_no_drain_on_collision(
 
         agents, batt_drain = batterydrainage(agents, vel_actual, F_drag, robot_rad, dt)
 
-        # --- drain holiday: refund this step's drain for any agent within min_dist of another ---
+        # --- drain holiday: refund this step's drain for any agent within min_dist of another,
+        # EXCEPT the unconditional idle-power floor (BATTERY_MIN_DRAIN), which is always paid
+        # regardless of collision state -- refunding the floor too would let a permanently-
+        # colliding agent pay literally zero net drain, giving it unlimited "free" flight time
+        # bounded only by MAX_STEPS (confirmed: job 6's first attempt did exactly this --
+        # agents clustered into permanent mass collision and cruised to the 5000-step cap at
+        # max speed, producing a fitness-hacked 264m/78306s-collision result that has nothing
+        # to do with realistic flocking). Only the portion of drain ABOVE the floor -- i.e.
+        # attributable to wheel/drag power, not baseline idle draw -- is refundable. ---
         agents_xy = agents[:, 0:2]
         D = np.linalg.norm(agents_xy[:, None, :] - agents_xy[None, :, :], axis=-1)
         np.fill_diagonal(D, np.inf)
         colliding_agent = D.min(axis=1) < min_dist if n_agents > 1 else np.zeros(n_agents, dtype=bool)
         if np.any(colliding_agent):
-            refund = config.BATTERY_DRAIN_SCALE * batt_drain[colliding_agent]
+            floor = config.BATTERY_MIN_DRAIN * dt
+            refundable = np.maximum(batt_drain - floor, 0.0)
+            refund = config.BATTERY_DRAIN_SCALE * refundable[colliding_agent]
             agents[colliding_agent, 3] += refund
             refunded_drain_total += float(np.sum(refund))
 
@@ -255,13 +279,19 @@ def simulate_hebbian_episode_partial_drain_on_collision(
         agents, batt_drain = batterydrainage(agents, vel_actual, F_drag, robot_rad, dt)
 
         # --- partial drain holiday: refund (1 - drain_fraction) of this step's drain for any
-        # agent within min_dist of another (drain_fraction=0.0 reduces to a full refund) ---
+        # agent within min_dist of another (drain_fraction=0.0 reduces to a full refund), EXCEPT
+        # the unconditional idle-power floor (BATTERY_MIN_DRAIN), which is always paid regardless
+        # of collision state or drain_fraction -- see the sibling function's comment for why
+        # (job 6's first attempt refunded the floor too and produced a fitness-hacked
+        # permanent-mass-collision exploit that ran to the step cap at max speed). ---
         agents_xy = agents[:, 0:2]
         D = np.linalg.norm(agents_xy[:, None, :] - agents_xy[None, :, :], axis=-1)
         np.fill_diagonal(D, np.inf)
         colliding_agent = D.min(axis=1) < min_dist if n_agents > 1 else np.zeros(n_agents, dtype=bool)
         if np.any(colliding_agent):
-            refund = (1.0 - drain_fraction) * config.BATTERY_DRAIN_SCALE * batt_drain[colliding_agent]
+            floor = config.BATTERY_MIN_DRAIN * dt
+            refundable = np.maximum(batt_drain - floor, 0.0)
+            refund = (1.0 - drain_fraction) * config.BATTERY_DRAIN_SCALE * refundable[colliding_agent]
             agents[colliding_agent, 3] += refund
             refunded_drain_total += float(np.sum(refund))
 
