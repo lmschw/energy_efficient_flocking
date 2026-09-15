@@ -18,6 +18,24 @@ generate_new_conditions.py (genome format / forward pass / sensor model are iden
 variants; upwind_safety_variant's WIND_DIRECTION=(-1,0) dot-product is numerically identical to
 experiment/'s bare "-x").
 
+n_agents sweep is {1,2,3,4,5,7,10,20} -- extended beyond this project's usual {2,3,4,5,10,20}
+at the user's request to see how these genomes generalize down to a single agent and n=7.
+n=1 and n=7 are new territory (no prior condition in this project used them); both were
+sanity-checked beforehand for crashes in the n_agents>1-guarded pairwise-distance/collision
+code paths (simulation_hebbian.py's _move/_apply_safety_clamp) and run cleanly.
+
+TIGHTER SPAWN FOR VISUALIZATION: config.SPAWN_SQUARE_SIZE defaults to 3.0m, while the sensing
+radius (config.HEBBIAN_SENSING_RADIUS) is only 2.01m -- at n=2 especially, this let agents
+spawn ~29% of the time (measured empirically) entirely outside each other's sensing range,
+producing videos where they never react to each other at all (seed 42, n=2 was exactly such a
+draw: dist collapsed to 1.67m vs. 8-10m+ once spawn is tightened). VIDEO_SPAWN_SQUARE_SIZE=1.0
+below overrides this ONLY for video/plot generation (max possible pairwise distance in a 1.0m
+square is 1.41m, always under the 2.01m sensing radius, guaranteed regardless of n up to at
+least 20 -- verified n=20 spawn still converges in <0.4s). This does NOT change
+config.SPAWN_SQUARE_SIZE globally and does NOT affect the already-reported 30-seed statistical
+comparisons in overleaf_summary/ (those keep the default 3.0m spawn, matching the paper's own
+protocol) -- it only makes these illustrative single-seed videos actually show interaction.
+
 Usage: python generate_upwind_2stage_conditions.py
 """
 import json
@@ -37,7 +55,8 @@ from simulation_hebbian import render_hebbian_episode_video  # noqa: E402
 from battery_plot import plot_battery_levels  # noqa: E402
 from leadership_metrics import _ConfigOverride, SEED, WIND_GRID  # noqa: E402
 
-N_AGENTS_SWEEP = (2, 3, 4, 5, 10, 20)
+N_AGENTS_SWEEP = (1, 2, 3, 4, 5, 7, 10, 20)
+VIDEO_SPAWN_SQUARE_SIZE = 1.0
 
 NO_CLAMP = dict(safety_clamp=False, min_dist_inflation=1.0, resolve_collisions=False)
 
@@ -57,6 +76,7 @@ def run_condition(label, overrides):
         HEBBIAN_SAFETY_CLAMP_ENABLED=overrides["safety_clamp"],
         HEBBIAN_MIN_DIST_INFLATION=overrides["min_dist_inflation"],
         HEBBIAN_RESOLVE_COLLISIONS=overrides["resolve_collisions"],
+        SPAWN_SQUARE_SIZE=VIDEO_SPAWN_SQUARE_SIZE,
     )
     if "resolve_strength" in overrides:
         cfg_patch["HEBBIAN_RESOLVE_COLLISIONS_STRENGTH"] = overrides["resolve_strength"]
