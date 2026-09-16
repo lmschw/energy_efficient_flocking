@@ -3,13 +3,18 @@ down to the small swarm sizes relevant for real hardware trials, and adds the re
 across-n_agents comparison plots for the three winning 2-stage-upwind genomes
 (upwind_2stage_plain_seed123, upwind_2stage_plain_seed888, upwind_2stage_drain0_seed123).
 
-Everything here uses the TIGHTER spawn square (SPAWN_SQUARE_SIZE=1.0, see
-generate_upwind_2stage_conditions.py's docstring) rather than config.py's default 3.0m --
-at the default spawn, agents can spawn entirely outside each other's 2.01m sensing range
-(~29% of the time for n=2, empirically), which is especially punishing for the small-n
-sizes this script targets. All eval is under STANDARD (real, non-refunded) drain physics
-regardless of each genome's training-time drain regime, matching the hardware-realism
-check already done at n=20.
+Uses config.py's DEFAULT spawn square (3.0m) -- matching every other statistical comparison
+already reported for these genomes (the n=20 headline 25/25/29-out-of-30 both-beat numbers),
+rather than the tighter 1.0m spawn used for generate_upwind_2stage_conditions.py's videos.
+Two reasons: (1) the user decided to keep the default-spawn numbers as authoritative since
+they show larger, better-performing distances; (2) SPAWN_SQUARE_SIZE=1.0 turned out to make
+_spawn_agents's naive one-point-at-a-time rejection sampling (wind_physics.py) pathologically
+slow at n=20 for some seeds (e.g. seed 1009/1011 hang indefinitely) -- at that box size, 20
+robots are packed close to the hard-disk jamming density limit, which this rejection scheme
+isn't built to escape quickly. The default 3.0m box has no such issue (verified: every seed
+1000-1029 spawns in well under a second at every n_agents in the sweep). All eval is under
+STANDARD (real, non-refunded) drain physics regardless of each genome's training-time drain
+regime, matching the hardware-realism check already done at n=20.
 
 Produces, for n_agents in {1,2,3,4,5,7,10,20} (metric 3 / battery-spread skipped at n=1,
 which has no "other agent" for either to be meaningful about):
@@ -59,13 +64,12 @@ from leadership_metrics import _front_rank_series, occupancy_and_exchange  # noq
 N_AGENTS_SWEEP = (1, 2, 3, 4, 5, 7, 10, 20)
 SEEDS = list(range(1000, 1030))
 SEED_SINGLE = config.HEBBIAN_DEFAULT_SEED  # 42
-TIGHT_SPAWN = 1.0
 OUT_DIR_FIG = os.path.join(SCRIPT_DIR, "overleaf_summary", "figures")
 OUT_JSON = os.path.join(SCRIPT_DIR, "overleaf_summary", "n_agents_sweep_comparison.json")
 
 _BASELINE_RULES_PATH = os.path.join(SCRIPT_DIR, "lj_baseline", "paper_baseline_rules.json")
 NO_CLAMP = dict(HEBBIAN_SAFETY_CLAMP_ENABLED=False, HEBBIAN_MIN_DIST_INFLATION=1.0,
-                HEBBIAN_RESOLVE_COLLISIONS=False, SPAWN_SQUARE_SIZE=TIGHT_SPAWN)
+                HEBBIAN_RESOLVE_COLLISIONS=False)
 
 CONDITIONS = {
     "lj_baseline": (None, "#77AC30"),
@@ -81,7 +85,7 @@ CONDITIONS = {
 def _run_scalar(label, genome_path, n_agents, seed):
     if genome_path is None:
         rules = json.load(open(_BASELINE_RULES_PATH))
-        with _ConfigOverride(HEBBIAN_NX=WIND_GRID, HEBBIAN_NY=WIND_GRID, SPAWN_SQUARE_SIZE=TIGHT_SPAWN):
+        with _ConfigOverride(HEBBIAN_NX=WIND_GRID, HEBBIAN_NY=WIND_GRID):
             _, dist, batt, _ = simulate_lj_baseline(rules=rules, seed=seed, n_agents=n_agents)
         return dist, batt / config.MAX_BATTERY * 100.0
 
@@ -96,7 +100,7 @@ def _run_scalar(label, genome_path, n_agents, seed):
 def _run_trajectory(label, genome_path, n_agents, seed):
     if genome_path is None:
         rules = json.load(open(_BASELINE_RULES_PATH))
-        with _ConfigOverride(HEBBIAN_NX=WIND_GRID, HEBBIAN_NY=WIND_GRID, SPAWN_SQUARE_SIZE=TIGHT_SPAWN):
+        with _ConfigOverride(HEBBIAN_NX=WIND_GRID, HEBBIAN_NY=WIND_GRID):
             _, _, _, _, tele = simulate_lj_baseline(rules=rules, seed=seed, n_agents=n_agents,
                                                      record_trajectory=True)
         return tele["positions"]
@@ -114,7 +118,7 @@ def _run_battery_trace(label, genome_path, n_agents, seed):
     """Final per-agent battery array (raw scale for LJ, 0-100 for Hebbian -- caller normalizes)."""
     if genome_path is None:
         rules = json.load(open(_BASELINE_RULES_PATH))
-        with _ConfigOverride(HEBBIAN_NX=WIND_GRID, HEBBIAN_NY=WIND_GRID, SPAWN_SQUARE_SIZE=TIGHT_SPAWN):
+        with _ConfigOverride(HEBBIAN_NX=WIND_GRID, HEBBIAN_NY=WIND_GRID):
             _, _, _, _, tele = simulate_lj_baseline(rules=rules, seed=seed, n_agents=n_agents,
                                                      record_battery=True)
         return tele["battery"][-1] / config.MAX_BATTERY * 100.0
@@ -131,7 +135,7 @@ def _run_battery_trace(label, genome_path, n_agents, seed):
 def main():
     results = {label: {} for label in CONDITIONS}
 
-    print("=== 30-seed statistics + both-beat rate, tight spawn, standard physics ===")
+    print("=== 30-seed statistics + both-beat rate, default spawn, standard physics ===")
     for n_agents in N_AGENTS_SWEEP:
         per_label_db = {}
         for label, (genome_path, _color) in CONDITIONS.items():

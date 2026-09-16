@@ -172,6 +172,49 @@ effective learning dynamics. This also happens to match OptiTrack's own ~2 Hz pu
   `hostname_map` and the `HOSTS` list in all three
   `thymio_swarm_platform/examples/hebbian_*.py` launchers to match.
 
+## Newer candidate genomes from the "beat the LJ baseline" investigation (2026-09-15)
+
+A separate, later investigation (`hardware_transfer_test/upwind_2stage_*`,
+`ants26_replication/upwind_safety_variant/`) found three genomes -- a 2-stage
+(`walk_upwind` -> `save_battery_avoid_all`) curriculum, `n_agents=20`, seeds 123/888 (plain
+drain) and seed 123 (0%-drain-holiday) -- that reliably beat the rule-based LJ baseline on
+BOTH distance and battery simultaneously, unlike the genome currently deployed above. Before
+considering any of them as a replacement for this trial's genome, two things to know:
+
+1. **The win is specific to `n_agents=20` and does NOT hold at this trial's swarm size.**
+   A 30-seed sweep down to `n_agents=1..10` (`hardware_transfer_test/
+   overleaf_summary/n_agents_sweep_comparison.json`, `figures/n_agents_sweep_distance_battery.*`)
+   found **zero of 30 seeds** where any of the three genomes beat the LJ baseline on both
+   axes at any swarm size from 1 to 10 -- only at `n_agents=20` do they win reliably
+   (22-29/30 seeds). The LJ baseline's own distance is roughly flat (~25m) from `n=1` to
+   `n=7` and only collapses to baseline-losing territory at `n=10`+, while these genomes
+   climb steadily with swarm size and only cross over near `n=10-20`. **Swapping this
+   trial's genome for one of these three would not be expected to help a 3-robot run, and
+   plausibly performs worse** -- this reproduces, with real numbers, the "Swarm-size
+   mismatch" risk already flagged below for the currently-deployed genome, just for a
+   different genome. If you want a hardware demonstration of the "beats baseline" result,
+   it needs more real robots (or the claim needs to be scoped to simulation-only,
+   explicitly, in any write-up).
+2. **None of the three have the safety clamp** (`HEBBIAN_SAFETY_CLAMP_ENABLED`,
+   `HEBBIAN_MIN_DIST_INFLATION`, `HEBBIAN_RESOLVE_COLLISIONS` -- see "Corridor wall safety"
+   below for the analogous wall case) active during training -- same situation as this
+   trial's own genome, so nothing changes re: the corridor governor's applicability. But
+   for INTER-ROBOT collision safety specifically: a deployment-only bolt-on governor
+   (scaling `v` down near a sensed neighbor, mirroring `_corridor_speed_scale()` below) was
+   tested in simulation against all three genomes across six band widths from the training-
+   grade 0.30/0.05m gap down to a 0.005/0.001m near-contact-only band, and **every single
+   width collapsed distance to ~10-16% of unclamped** (e.g. `plain_seed123`: 18.57m
+   unclamped -> 1.8-3.1m clamped, regardless of band width) via the same gridlock failure
+   mode documented in `summary.tex`'s `sec:why-two-genomes` for the original pre-clamp
+   genome. **A bolt-on inter-agent speed governor is not a viable safety layer for any of
+   these three genomes at any band width** -- unlike the wall case, there is no cheap
+   deployment-side fix here. Clamped-from-scratch retraining of all three (mirroring how
+   `safety_clamp_best` above was produced) was started 2026-09-15 to see whether a
+   genuinely collision-safe version of any of them still beats baseline; check
+   `results/hebbian_results_v2_2stage_upwind{,_drain_0pct}_clamped/` for whether that
+   finished and what it found before deploying any of these three genomes to real hardware
+   with robots close enough to actually collide.
+
 ## Corridor wall safety
 
 The deployed genome has **no wall-distance sensory input at all** (`sensor_model.py`'s 10
