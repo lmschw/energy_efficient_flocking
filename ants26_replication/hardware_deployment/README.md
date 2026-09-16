@@ -258,6 +258,39 @@ To measure your real corridor bounds before this trial:
    little headroom inward, not the exact wall-touching extremes), commit+push, and tune
    `CORRIDOR_SLOWDOWN_MARGIN_M` to your corridor's real width and the robot's real speed.
 
+## Logged data, and comparing a real trial to the simulation results
+
+`hebbian_swarm_experiment.py`'s `_tick()` writes one CSV row per robot per control tick via
+the platform's `SessionLogger`: `tick` (integer counter, added 2026-09-16), `timestamp`
+(`time.time()`, added alongside it), `x`, `y` (already in the simulation's own coordinate
+frame/units via `pose_utils.py` -- directly comparable, not raw OptiTrack), `heading`,
+`battery`, `v`/`w` (the **post-clamp** commanded values -- after both the corridor and
+inter-agent safety governors scale them, i.e. what was actually sent to the motors), `left`,
+`right` (raw motor targets, no sim equivalent). After a trial, each robot's CSV is zipped,
+pulled to the controller, and merged into one DataFrame (tagged by a `hostname` column) via
+`swarm_platform.utils.unpack_results.aggregate_csvs()`.
+
+Before the `tick`/`timestamp` columns were added, there was no way to align different robots'
+rows to the same real instant except assuming a perfectly clean, gap-free
+`CONTROL_TICK_SECONDS` cadence per robot -- fragile, since real ticks drift slightly over that
+due to per-tick compute/network latency this doesn't otherwise measure. With `timestamp`
+present, alignment across robots (needed for anything comparing multiple agents at once) can
+be done properly by nearest-timestamp matching instead.
+
+What's directly comparable to `hardware_transfer_test/final/`'s simulation plots:
+- **Fig.~6 trajectory analog**: fully direct, `(x,y)` overlays straight onto the same axes.
+- **Battery-vs-time** (`battery_plot.png` analog): direct if `BATTERY_MODE="simulated"` --
+  but it's a physically-modeled quantity from real positions, not a measurement; say so in
+  any caption.
+- **Fig.~5a distance-vs-battery scatter**: direct in format, but with 3 robots and a handful
+  of trial runs (not 30 seeds) it'll be a few points, not a statistical cloud.
+- **Leadership/turn-taking metrics and any inter-agent-distance metric** (collision time,
+  wall-sticking-over-time, whether the safety clamp actually engaged): reconstructible from
+  `x,y` across robots, aligned via `timestamp`, but still approximate compared to
+  simulation's perfectly-synchronized steps -- the clamp's own gap/scale values aren't
+  logged directly (only their effect on `v`), so "did the clamp engage on this tick" has to
+  be inferred from positions after the fact, not read off a column.
+
 ## A subpackage import gotcha (already fixed in this package, worth knowing about)
 
 `thymio_swarm_platform`'s `ProjectLoader` only adds the project's **root** directory to

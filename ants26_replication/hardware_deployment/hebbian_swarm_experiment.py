@@ -18,6 +18,7 @@ import asyncio
 import math
 import os
 import sys
+import time
 
 # thymio_swarm_platform's ProjectLoader only adds the project's ROOT directory to
 # sys.path (see loader.py) -- since project root is now the whole repo (swarm_project.yaml
@@ -89,6 +90,11 @@ class HebbianSwarmExperiment:
         self.logger = logger
         self.running = True
         self.paused = False
+        self._tick_count = 0  # incremented once per _tick() call, logged alongside a
+                               # wall-clock timestamp so post-hoc analysis (leadership
+                               # metrics, collision/wall proximity vs. time) can align
+                               # different robots' logs precisely instead of assuming a
+                               # clean, gap-free CONTROL_TICK_SECONDS cadence per robot.
 
         if "genome_path" not in self.config:
             raise ValueError("config['genome_path'] is required -- point it at a "
@@ -145,6 +151,7 @@ class HebbianSwarmExperiment:
         """One full sense -> decide -> act step. Factored out from run()'s loop so
         local_test_harness.py can drive it directly without needing an infinite loop or
         real hardware."""
+        self._tick_count += 1
         poses = await self.robot.get_all_global_poses()
         agents, self_index = poses_to_agents(poses, self.hostnames, self.self_hostname)
         current_position = (float(agents[self_index, 0]), float(agents[self_index, 1]))
@@ -202,7 +209,8 @@ class HebbianSwarmExperiment:
 
         if self.logger:
             self.logger.log(
-                state={"x": float(agents[self_index, 0]), "y": float(agents[self_index, 1]),
+                state={"tick": self._tick_count, "timestamp": time.time(),
+                       "x": float(agents[self_index, 0]), "y": float(agents[self_index, 1]),
                        "heading": float(agents[self_index, 2]), "battery": float(self.battery)},
                 command={"v": float(v), "w": float(w), "left": left, "right": right},
             )
