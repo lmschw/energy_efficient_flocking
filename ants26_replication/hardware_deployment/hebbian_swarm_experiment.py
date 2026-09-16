@@ -51,6 +51,34 @@ def _corridor_speed_scale(y):
     return min(1.0, margin / cfg.CORRIDOR_SLOWDOWN_MARGIN_M)
 
 
+def _agent_safety_speed_scale(agents, self_index):
+    """Deployment-ENFORCED port of simulation_hebbian.py's _apply_safety_clamp() (agent-agent
+    half only -- the wall half is _corridor_speed_scale() above, a separately-calibrated
+    mechanism for the real corridor). See controller_config.py's "Inter-agent safety clamp"
+    section for why this MUST be enforced here, not just trained in: plain_seed123_clamped's
+    weights were shaped by this clamp being active during training, but the clamp itself is
+    not part of what the network learned -- without this function, deploying that genome
+    would provide no more actual collision safety than the unclamped one.
+
+    Returns a [0, 1] multiplier for v, scaling from 1.0 (gap >= AGENT_SAFETY_CLAMP_OUTER_GAP)
+    linearly down to 0.0 (gap <= AGENT_SAFETY_CLAMP_INNER_GAP, i.e. contact), using the same
+    formula and thresholds simulation_hebbian.py trained this genome under. `agents` is the
+    full (n_agents, 4) array from poses_to_agents() -- untracked robots sit at pose_utils.py's
+    (1e4, 1e4) sentinel, which yields a huge gap here (no braking effect), the same
+    "can't protect against what we can't see" default every other neighbor-facing computation
+    in this package already accepts (see sensor_model.py)."""
+    agents_xy = agents[:, 0:2]
+    n_agents = agents_xy.shape[0]
+    if n_agents < 2:
+        return 1.0
+    deltas = agents_xy[self_index] - agents_xy
+    dists = np.linalg.norm(deltas, axis=1)
+    dists[self_index] = np.inf
+    nearest_gap = dists.min() - 2.0 * cfg.ROBOT_RAD
+    outer, inner = cfg.AGENT_SAFETY_CLAMP_OUTER_GAP, cfg.AGENT_SAFETY_CLAMP_INNER_GAP
+    return float(np.clip((nearest_gap - inner) / (outer - inner), 0.0, 1.0))
+
+
 class HebbianSwarmExperiment:
     # NOTE: the parameter must be named exactly `config` (not e.g. config_dict) --
     # thymio_swarm_platform's daemon instantiates every experiment with the keyword
@@ -157,7 +185,12 @@ class HebbianSwarmExperiment:
 
         v, w, self.w1, self.w2, self.w3 = hebbian_step(x_in, self.w1, self.w2, self.w3, self.rules)
         if self_tracked:
-            v *= _corridor_speed_scale(current_position[1])
+            # min(), not product -- matches simulation_hebbian.py's own
+            # vel[:,0] *= np.minimum(agent_scale, wall_scale) combination exactly: whichever
+            # constraint (nearest neighbor or nearest wall) is more restrictive wins, rather
+            # than compounding both into an even smaller scale.
+            v *= min(_corridor_speed_scale(current_position[1]),
+                     _agent_safety_speed_scale(agents, self_index))
         left, right = velocity_to_motor_targets(v, w)
         await self.robot.drive(left, right)
         self._last_w = w

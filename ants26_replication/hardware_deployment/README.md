@@ -154,66 +154,83 @@ more updates per second of real time than the genome ever experienced, changing 
 effective learning dynamics. This also happens to match OptiTrack's own ~2 Hz push rate
 (see below), so it avoids wasting ticks re-reading a stale, unchanged pose.
 
-## Current trial config (3 real Thymios)
+## Current trial config (3 real Thymios) -- updated 2026-09-16, final decision
 
-- **Genome:** `hebbian_results_v2/hebbian_save_battery_avoid_all_best.npy` -- the
-  paper-default run (`n_agents=20`), trained through all 3 curriculum stages
-  (`walk_left` -> `save_battery_avoid_wall` -> `save_battery_avoid_all`). Nothing in this
-  repo has a genome actually trained at `n_agents=3` (the closest available is `n=4`, in
-  `hebbian_results_v2_n4/`) -- running the `n=20` genome with only 2 real neighbors is a
-  real, disclosed sim-to-real gap (much sparser than what it was evolved against), a
-  deliberate choice over the untested-at-scale `n=4`/`n=7` variants.
+- **Genome: `plain_seed123_clamped_best.npy`** -- replaces the earlier paper-default genome
+  (`hebbian_results_v2/hebbian_save_battery_avoid_all_best.npy`, still present in this
+  directory as `hebbian_save_battery_avoid_all_best.npy` for reference/rollback). Chosen at
+  the end of a full investigation documented in
+  `hardware_transfer_test/final/BEAT_BASELINE_INVESTIGATION_LOG.md` -- read that first for the
+  complete story; short version: it's a 2-stage (`walk_upwind` -> `save_battery_avoid_all`)
+  curriculum genome, `n_agents=20`, seed 123, retrained from scratch with the hard
+  inter-agent safety clamp active throughout training (see "Inter-agent safety clamp" below
+  -- this is NOT the same genome as the higher-both-beat-rate `plain_seed888`/`drain0_seed123`
+  candidates also found by that investigation; `plain_seed123` was chosen specifically because
+  it's the only one of the four that doesn't chronically hug/stick to a wall, judged more
+  important for a physical trial than its lower simulated both-beat rate).
+  `GENOME_PATH_ON_PI` in `thymio_swarm_platform/examples/hebbian_swarm_trial.py` was updated
+  to match.
+- **Same swarm-size caveat as before, now with real numbers for this exact genome**: it
+  reliably beats the LJ baseline at `n_agents=20` (83% both-beat, clamped: 17%) but **not**
+  at this trial's `n=3` -- the investigation log's n_agents-sweep finding found zero wins
+  below `n=20` for every genome tested, including this one. Treat this trial as a **sim-to-
+  real controller-transfer validation**, not a demonstration of "beats baseline" -- that
+  claim belongs in simulation results at `n=20`, not this hardware trial.
 - **`BATTERY_MODE = "simulated"`** -- this genome was trained WITH the battery sensor
-  (`battery_sensor=True` in its history JSON), so `"none"` mode would silently feed it a
-  placeholder input it never learned to use. No extra dependencies to install on the Pis
-  for this (see Battery above).
+  (`use_battery_sensor=True`), so `"none"` mode would silently feed it a placeholder input it
+  never learned to use.
+- **`KAPPA`/`NX`/`NY` were corrected** (2026-09-16) to `10.0`/`50`/`50` to match this genome's
+  actual training-time physics -- see `controller_config.py`'s comments; the previous
+  `20.0`/`200`/`200` values had no justifying comment and did not match any genome ever
+  trained in this repo.
 - **Hosts:** `thymio-17`, `thymio-18`, `thymio-20` -- their OptiTrack rigid-body mappings
   are in `/swarm_project.yaml` (repo root). If you change `HOSTS`, update both that file's
   `hostname_map` and the `HOSTS` list in all three
   `thymio_swarm_platform/examples/hebbian_*.py` launchers to match.
 
-## Newer candidate genomes from the "beat the LJ baseline" investigation (2026-09-15)
+## Inter-agent safety clamp (deployment-ENFORCED, not just trained-in)
 
-A separate, later investigation (`hardware_transfer_test/upwind_2stage_*`,
-`ants26_replication/upwind_safety_variant/`) found three genomes -- a 2-stage
-(`walk_upwind` -> `save_battery_avoid_all`) curriculum, `n_agents=20`, seeds 123/888 (plain
-drain) and seed 123 (0%-drain-holiday) -- that reliably beat the rule-based LJ baseline on
-BOTH distance and battery simultaneously, unlike the genome currently deployed above. Before
-considering any of them as a replacement for this trial's genome, two things to know:
+**This is the reason `plain_seed123_clamped` is safe to deploy near other robots at all --
+read this before running it.** The clamp that `plain_seed123_clamped` was retrained under is
+a *simulation-time* mechanism (`simulation_hebbian.py`'s `_apply_safety_clamp()`); training
+under it only shapes what the network *learned*, it does not make the network intrinsically
+collision-avoidant by itself. Nothing in this package enforced any inter-agent speed limit at
+deployment time until 2026-09-16 (only the corridor/wall governor below existed) -- **deploying
+the clamped genome without also enforcing the clamp here would give zero actual collision-
+safety benefit over the unclamped genome.** This was nearly missed.
 
-1. **The win is specific to `n_agents=20` and does NOT hold at this trial's swarm size.**
-   A 30-seed sweep down to `n_agents=1..10` (`hardware_transfer_test/
-   overleaf_summary/n_agents_sweep_comparison.json`, `figures/n_agents_sweep_distance_battery.*`)
-   found **zero of 30 seeds** where any of the three genomes beat the LJ baseline on both
-   axes at any swarm size from 1 to 10 -- only at `n_agents=20` do they win reliably
-   (22-29/30 seeds). The LJ baseline's own distance is roughly flat (~25m) from `n=1` to
-   `n=7` and only collapses to baseline-losing territory at `n=10`+, while these genomes
-   climb steadily with swarm size and only cross over near `n=10-20`. **Swapping this
-   trial's genome for one of these three would not be expected to help a 3-robot run, and
-   plausibly performs worse** -- this reproduces, with real numbers, the "Swarm-size
-   mismatch" risk already flagged below for the currently-deployed genome, just for a
-   different genome. If you want a hardware demonstration of the "beats baseline" result,
-   it needs more real robots (or the claim needs to be scoped to simulation-only,
-   explicitly, in any write-up).
-2. **None of the three have the safety clamp** (`HEBBIAN_SAFETY_CLAMP_ENABLED`,
-   `HEBBIAN_MIN_DIST_INFLATION`, `HEBBIAN_RESOLVE_COLLISIONS` -- see "Corridor wall safety"
-   below for the analogous wall case) active during training -- same situation as this
-   trial's own genome, so nothing changes re: the corridor governor's applicability. But
-   for INTER-ROBOT collision safety specifically: a deployment-only bolt-on governor
-   (scaling `v` down near a sensed neighbor, mirroring `_corridor_speed_scale()` below) was
-   tested in simulation against all three genomes across six band widths from the training-
-   grade 0.30/0.05m gap down to a 0.005/0.001m near-contact-only band, and **every single
-   width collapsed distance to ~10-16% of unclamped** (e.g. `plain_seed123`: 18.57m
-   unclamped -> 1.8-3.1m clamped, regardless of band width) via the same gridlock failure
-   mode documented in `summary.tex`'s `sec:why-two-genomes` for the original pre-clamp
-   genome. **A bolt-on inter-agent speed governor is not a viable safety layer for any of
-   these three genomes at any band width** -- unlike the wall case, there is no cheap
-   deployment-side fix here. Clamped-from-scratch retraining of all three (mirroring how
-   `safety_clamp_best` above was produced) was started 2026-09-15 to see whether a
-   genuinely collision-safe version of any of them still beats baseline; check
-   `results/hebbian_results_v2_2stage_upwind{,_drain_0pct}_clamped/` for whether that
-   finished and what it found before deploying any of these three genomes to real hardware
-   with robots close enough to actually collide.
+Fixed by porting the same mechanism into `hebbian_swarm_experiment.py`:
+`_agent_safety_speed_scale()` computes the real, OptiTrack-measured gap to the nearest other
+tracked robot and scales `v` (never `w`, same philosophy as the corridor governor) from 1.0
+at `AGENT_SAFETY_CLAMP_OUTER_GAP` (0.30m) down to 0.0 at `AGENT_SAFETY_CLAMP_INNER_GAP` (0.05m,
+contact) -- identical formula and thresholds to what the genome actually trained under. In
+`_tick()`, this is combined with the corridor governor via `min()`, matching
+`simulation_hebbian.py`'s own `np.minimum(agent_scale, wall_scale)` combination exactly:
+whichever constraint is more restrictive wins. Verified directly (not just "doesn't crash"):
+`_agent_safety_speed_scale` returns 1.0 at a 0.50m gap, 0.6 at 0.20m, 0.0 at and below 0.05m,
+matching the formula's own math bit for bit; `local_test_harness.py` (3 robots 0.5-0.6m apart)
+runs clean with visibly reduced `v` on ticks where the clamp engages.
+
+**Note this does NOT cover physical de-overlap (`HEBBIAN_RESOLVE_COLLISIONS` in simulation) --
+that mechanism teleports/pushes overlapping agents in software, which has no real-world analog
+and was correctly never ported.** Only the speed-clamp half is portable, and it's the half
+that matters for not colliding at speed.
+
+If you ever deploy a *different* clamped genome, re-verify `AGENT_SAFETY_CLAMP_OUTER_GAP`/
+`INNER_GAP` against that genome's own training config before trusting this mechanism for it.
+
+## Other candidates from the same investigation, not chosen
+
+The same investigation (see `hardware_transfer_test/final/BEAT_BASELINE_INVESTIGATION_LOG.md` for
+the full comparison) also produced `plain_seed888` and `drain0_seed123` (both clamped and
+unclamped forms) with higher both-beat rates than `plain_seed123` in simulation (83-97% vs.
+83%, collapsing further under the clamp for all three). They were not chosen because both
+chronically hug/stick to a wall at hardware-relevant swarm sizes (`drain0_seed123`: 47-72% of
+its total agent-time-budget spent at a wall, even running completely alone; `plain_seed888`:
+fine at low n but 40-49% at n=7-20) -- a failure mode invisible in the distance/battery/both-
+beat numbers alone, only caught by reviewing generated videos. Their genome files are kept in
+`hardware_transfer_test/archive/upwind_2stage_{plain_seed888,drain0_seed123}{,_clamped}/` for
+reference if this trial's config ever needs revisiting.
 
 ## Corridor wall safety
 

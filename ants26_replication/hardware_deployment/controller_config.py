@@ -49,11 +49,10 @@ ANGULAR_VEL_MAX = math.pi / 5  # rad/s
 # battery is a physically-modeled software quantity computed from real robot positions,
 # not a measurement of real power draw.
 BATTERY_MODE = "simulated"   # "none" or "simulated"
-# Set to "simulated" for this deployment: the chosen genome (hebbian_results_v2/
-# hebbian_save_battery_avoid_all_best.npy, the paper-default n_agents=20 run through all
-# 3 curriculum stages) was trained WITH the battery sensor (battery_sensor=True in its
-# history JSON) -- there is no "_nosensor" variant of it. "none" mode would silently feed
-# it a constant placeholder it was never trained to expect.
+# Set to "simulated" for this deployment: the chosen genome (plain_seed123_clamped_best.npy,
+# see "Current trial config" below) was trained WITH the battery sensor
+# (use_battery_sensor=True) -- there is no "_nosensor" variant of it. "none" mode would
+# silently feed it a constant placeholder it was never trained to expect.
 BATTERY_SENSOR_PLACEHOLDER = 0.0   # used only when BATTERY_MODE == "none"
 
 # --- Control tick rate ---
@@ -167,6 +166,27 @@ CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # before reaching the wall; too large eats into usable corridor width unnecessarily.
 
 # =====================================================================================
+# --- Inter-agent safety clamp (deployment-ENFORCED, not just trained-in) -------------
+# =====================================================================================
+# CRITICAL: plain_seed123_clamped.npy was retrained WITH a hard forward-speed clamp active
+# during evolution (see ants26_replication/experiment/simulation_hebbian.py's
+# _apply_safety_clamp() and the training script
+# ants26_replication/upwind_safety_variant/run_2stage_upwind_clamped.py) -- but that clamp is
+# a SIMULATION-TIME mechanism, not something baked into the genome's weights. Training under
+# it only shapes what the network LEARNED to do; it does not make the network intrinsically
+# collision-avoidant on its own. If this clamp is not ALSO enforced here, at deployment time,
+# deploying "the clamped genome" provides ZERO actual collision-safety benefit over the
+# unclamped one -- confirmed necessary, not optional (this was nearly missed: nothing in this
+# package enforced it before 2026-09-16, only the corridor/wall case below existed). Applied
+# in hebbian_swarm_experiment.py._tick() the same way as the corridor governor: scales v only
+# (never w) using the SAME thresholds and TRUE (uninflated) ROBOT_RAD the training run used.
+AGENT_SAFETY_CLAMP_OUTER_GAP = 0.30   # gap [m] at which braking begins (full speed above this)
+AGENT_SAFETY_CLAMP_INNER_GAP = 0.05   # gap [m] at which forward speed reaches zero (contact)
+# Matches experiment/config.py's HEBBIAN_SAFETY_CLAMP_OUTER_GAP/INNER_GAP exactly -- these
+# are NOT independently tunable the way CORRIDOR_SLOWDOWN_MARGIN_M is; changing them without
+# retraining would clamp the genome under DIFFERENT conditions than it was evolved against.
+
+# =====================================================================================
 # --- Simulated battery drainage (BATTERY_MODE == "simulated") ------------------------
 # Every constant below is copied verbatim from experiment/config.py's HEBBIAN_*/WAKE_*/
 # DRAG_*/BATTERY_* sections -- "the same battery drainage as the simulation" means using
@@ -198,15 +218,27 @@ UNTRACKED_XY_THRESHOLD = 1e3
 # from the wake field itself, since 1e4 is far outside any realistic grid.
 
 UINF = 100.0
-NX = 200
-NY = 200
-# Wind grid resolution. The O(Nx) wake-marching loop plus two 2D convolutions run once
-# per control tick when this mode is on. UNMEASURED on real Pi hardware -- a Pi is much
-# slower than a dev laptop, and CONTROL_TICK_SECONDS = 0.5s is a hard real-time budget
-# this computation must fit inside. Profile this on your actual Pi before trusting the
-# default; drop to e.g. 50 (matches experiment/optimize_hebbian.py's --wind-grid 50) if a
-# tick can't keep up.
-KAPPA = 20.0
+NX = 50
+NY = 50
+# Wind grid resolution -- MUST match whatever the deployed genome was actually trained at
+# (see plain_seed123_clamped's training command, --wind-grid 50, same as every other genome
+# in this session's investigation) or the wake field the battery model sees at deployment
+# time is quantitatively different from what the genome was evolved against. Previously set
+# to 200 with no explanation -- almost certainly a stale, never-corrected default rather than
+# a deliberate choice (this exact mismatch was independently documented and fixed for the
+# simulation-side analysis in hardware_transfer_test/leadership_metrics.py's docstring: "both
+# genomes' sibling _history.json record they were trained at wind_grid_nx/ny=50, not
+# config.py's current default of 200"). The O(Nx) wake-marching loop plus two 2D convolutions
+# run once per control tick when this mode is on; at NX=NY=50 this is comfortably fast
+# (config.py's KAPPA/NX values matched to the training run's own config), but still
+# UNMEASURED on real Pi hardware -- profile before trusting.
+KAPPA = 10.0
+# MUST match the deployed genome's training-time value -- was 20.0 with no explanation
+# (every genome trained in ants26_replication/experiment/ and .../upwind_safety_variant/
+# uses config.py's own default of 10.0; nothing in this investigation ever trained under
+# KAPPA=20 for a genome that ended up deployed). Fixed alongside the NX/NY correction above
+# when plain_seed123_clamped became the deployed genome (2026-09-16) -- if you swap genomes
+# again, re-check both constants against that genome's own training config.
 V_WIND = 10.0
 
 WAKE_RECOVERY_RATE = 1.0
