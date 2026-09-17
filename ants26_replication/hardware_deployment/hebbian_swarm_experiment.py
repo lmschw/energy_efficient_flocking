@@ -155,6 +155,22 @@ class HebbianSwarmExperiment:
         poses = await self.robot.get_all_global_poses()
         agents, self_index = poses_to_agents(poses, self.hostnames, self.self_hostname)
         current_position = (float(agents[self_index, 0]), float(agents[self_index, 1]))
+        # Raw pose (untranslated, unrotated OptiTrack reading) for THIS robot, logged
+        # alongside the derived x/y/heading below -- poses_to_agents() only keeps the
+        # POSITION_AXES-selected 2D ground-plane projection plus a yaw angle, discarding
+        # the third (height, here Y since this rig is Y-up -- see POSITION_AXES's comment)
+        # position component and the full orientation quaternion entirely. Logged raw so
+        # nothing is thrown away that a later analysis might want (tilt/roll from the
+        # quaternion, height drift, an independent recomputation of heading, etc.) --
+        # None (empty in the CSV) if this robot isn't currently tracked, matching
+        # poses_to_agents()'s own `poses.get(host)` handling of the same case.
+        self_pose = poses.get(self.self_hostname)
+        if self_pose is not None:
+            raw_position = tuple(float(c) for c in self_pose.position)
+            raw_orientation = tuple(float(c) for c in self_pose.orientation)
+        else:
+            raw_position = (None, None, None)
+            raw_orientation = (None, None, None, None)
         # pose_utils.py places an untracked robot at (1e4, 1e4) rather than raising -- a
         # real, expected state right after a session starts, before OptiTrack has locked
         # onto every rigid body. self_tracked guards the position-delta speed estimate
@@ -211,7 +227,10 @@ class HebbianSwarmExperiment:
             self.logger.log(
                 state={"tick": self._tick_count, "timestamp": time.time(),
                        "x": float(agents[self_index, 0]), "y": float(agents[self_index, 1]),
-                       "heading": float(agents[self_index, 2]), "battery": float(self.battery)},
+                       "heading": float(agents[self_index, 2]), "battery": float(self.battery),
+                       "raw_x": raw_position[0], "raw_y": raw_position[1], "raw_z": raw_position[2],
+                       "qx": raw_orientation[0], "qy": raw_orientation[1],
+                       "qz": raw_orientation[2], "qw": raw_orientation[3]},
                 command={"v": float(v), "w": float(w), "left": left, "right": right},
             )
         return v, w, left, right

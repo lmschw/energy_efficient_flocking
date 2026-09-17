@@ -261,13 +261,23 @@ To measure your real corridor bounds before this trial:
 ## Logged data, and comparing a real trial to the simulation results
 
 `hebbian_swarm_experiment.py`'s `_tick()` writes one CSV row per robot per control tick via
-the platform's `SessionLogger`: `tick` (integer counter, added 2026-09-16), `timestamp`
-(`time.time()`, added alongside it), `x`, `y` (already in the simulation's own coordinate
-frame/units via `pose_utils.py` -- directly comparable, not raw OptiTrack), `heading`,
-`battery`, `v`/`w` (the **post-clamp** commanded values -- after both the corridor and
-inter-agent safety governors scale them, i.e. what was actually sent to the motors), `left`,
-`right` (raw motor targets, no sim equivalent). After a trial, each robot's CSV is zipped,
-pulled to the controller, and merged into one DataFrame (tagged by a `hostname` column) via
+the platform's `SessionLogger`, all added 2026-09-16 unless noted:
+- `tick` (integer counter), `timestamp` (`time.time()`)
+- `x`, `y` (already in the simulation's own coordinate frame/units via `pose_utils.py` --
+  directly comparable, not raw OptiTrack), `heading`, `battery` (pre-existing)
+- `raw_x`, `raw_y`, `raw_z` and `qx`, `qy`, `qz`, `qw` -- this robot's **complete, untranslated
+  OptiTrack reading** (full 3D position + orientation quaternion), logged in addition to the
+  derived `x`/`y`/`heading` above so nothing is discarded that a later analysis might want
+  (tilt/roll from the quaternion, height/`raw_y` drift on this Y-up rig, an independent
+  recomputation of heading). All four/three fields are empty together on any tick this robot
+  isn't currently tracked -- same condition `poses_to_agents()` already handles for the
+  derived fields, just also applied here.
+- `v`/`w` (pre-existing; the **post-clamp** commanded values -- after both the corridor and
+  inter-agent safety governors scale them, i.e. what was actually sent to the motors), `left`,
+  `right` (pre-existing; raw motor targets, no sim equivalent)
+
+After a trial, each robot's CSV is zipped, pulled to the controller, and merged into one
+DataFrame (tagged by a `hostname` column) via
 `swarm_platform.utils.unpack_results.aggregate_csvs()`.
 
 Before the `tick`/`timestamp` columns were added, there was no way to align different robots'
