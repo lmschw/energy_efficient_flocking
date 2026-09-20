@@ -76,7 +76,8 @@ WHEEL_DISTANCE_M = 0.085     # thymio_swarm_platform RobotConfig.wheel_distance
 MAX_MOTOR_TARGET = 500       # thymio_swarm_platform RobotConfig.max_motor (raw units;
                              # NOT enforced by the platform's Robot.drive() itself)
 
-MOTOR_UNITS_PER_MPS = 3609.86
+MOTOR_UNITS_PER_MPS = 5455.36
+#MOTOR_UNITS_PER_MPS = 3609.86
 # STILL STALE / DO NOT TRUST -- same flawed calibration run as HEADING_OFFSET_RAD above:
 # travel_speed is measured as hypot() over the (wrong) selected ground-plane axes, so
 # this number is corrupted too, not just the heading/axes values. Re-run calibration with
@@ -91,10 +92,40 @@ HEADING_OFFSET_RAD_DEFAULT = -2.8531
 # calibration and how each rigid body's "front" was defined when you created it.
 
 HEADING_OFFSET_RAD = {
-    "thymio-17": +0.0797,
-    "thymio-20": +2.9517,
-    "thymio-18": -3.0151,
+    "thymio-08": -1.7287,
+    "thymio-12": +2.7956,
+    "thymio-15": -0.0046,
+    "thymio-17": +0.2781,
+    "thymio-09": +0.0727,
+    "thymio-25": -2.6076,
+    "thymio-11": +2.9281,
+    "thymio-03": -0.0228,
+    "thymio-04": +1.5512,
+    "thymio-01": +2.8539,
+    "thymio-07": +3.0682,
+    "thymio-19": -0.2165,
+    "thymio-18": -0.3709,
+    "thymio-14": -0.9035,
 }
+
+# if rotation_sign == -1
+# HEADING_OFFSET_RAD = {
+#     "thymio-08": -1.7355,
+#     "thymio-12": +3.1007,
+#     "thymio-15": +0.0893,
+#     "thymio-17": -0.4416,
+#     "thymio-09": -0.0134,
+#     "thymio-25": -0.8526,
+#     "thymio-11": -2.9537,
+#     "thymio-03": +0.0592,
+#     "thymio-04": +0.4832,
+#     "thymio-01": -3.0001,
+#     "thymio-07": +3.1158,
+#     "thymio-19": +0.0595,
+#     "thymio-18": +0.1304,
+#     "thymio-14": +0.4056,
+# }
+
 # PER-ROBOT, not one shared constant -- pose_utils.poses_to_agents() looks up each pose's
 # own hostname here, falling back to HEADING_OFFSET_RAD_DEFAULT (with a one-time warning,
 # not a crash) for any hostname not listed -- e.g. a new robot added to the fleet before
@@ -112,7 +143,7 @@ HEADING_OFFSET_RAD = {
 # Re-run calibration with that fix in place and replace these three values before
 # trusting them.
 
-POSITION_AXES = (0,2)
+POSITION_AXES = [0, 2]
 # This is a deterministic consequence of the rig being confirmed Y-up (axis 1 is up),
 # not something that needs re-measuring: excluding axis 1 always leaves (0, 2), Motive's
 # usual X/Z ground plane. Fixed directly rather than left at the previous calibration
@@ -153,8 +184,8 @@ ROTATION_SIGN = 1.0
 # scaled down near a wall even if the robot happens to already be heading away from it --
 # simpler and strictly safer than trying to also read intent from heading, at the cost
 # of some unnecessary slowdown in that case.
-CORRIDOR_Y_MIN = None   # meters, sim-frame y (agents[:, 1]) -- measure by deploying
-CORRIDOR_Y_MAX = None   # diagnostics/print_poses_experiment.py (with hostnames/
+CORRIDOR_Y_MIN = 0.327   # meters, sim-frame y (agents[:, 1]) -- measure by deploying
+CORRIDOR_Y_MAX = 1.229   # diagnostics/print_poses_experiment.py (with hostnames/
                          # self_hostname set) and walking a robot to each wall; it prints
                          # a running min/max of y for exactly this purpose. The governor
                          # is disabled (v passes through unmodified) while either is
