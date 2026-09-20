@@ -35,9 +35,21 @@ tracking:
   # swarm_platform.controller.client.SwarmClient.start_tracking()). Only the 3 hosts this
   # trial actually uses are listed -- add more here if you change HOSTS in the launcher.
   hostname_map:
-    thymio-17: "RigidBody 27"
-    thymio-18: "RigidBody 14"
-    thymio-20: "RigidBody 21"
+    thymio-01: "RigidBody 57"
+    thymio-03: "RigidBody 50"
+    thymio-04: "RigidBody 56"
+    thymio-09: "RigidBody 54"
+    thymio-07: "RigidBody 55"
+    thymio-14: "RigidBody 19"
+    thymio-15: "RigidBody 42"
+    thymio-11: "RigidBody 33"
+    thymio-12: "RigidBody 30"
+    thymio-25: "RigidBody 21"
+    thymio-18: "RigidBody 31"
+    thymio-08: "RigidBody 45"
+    thymio-17: "RigidBody 34"
+    thymio-16: "RigidBody 36"
+    thymio-19: "RigidBody 46"
 
 
 experiments:
