@@ -122,42 +122,42 @@ Needed so the built-in wall-safety governor actually knows where your walls are 
 this, robots will drive straight into a wall without slowing at all** (the genome has no wall
 sense of its own; see `README.md`'s "Corridor wall safety" section).
 
-This is a **point-and-sample** tool, not a continuous tracker — you place the robot, step
-clear of the tracked volume (so your own body isn't occluding its markers — bending over the
-robot to move it can block line-of-sight to some cameras and not others, which looks exactly
-like a frozen/broken reading even though nothing is actually wrong), then trigger a reading
-from the controller terminal.
+This is a **point-and-sample** tool, run **one robot at a time**, not a continuous tracker —
+you place the robot, step clear of the tracked volume (so your own body isn't occluding its
+markers — bending over the robot to move it can block line-of-sight to some cameras and not
+others, which looks exactly like a frozen/broken reading even though nothing is actually
+wrong), then trigger a reading from the controller terminal. No SSH/journalctl needed — the
+script collects every sample itself and prints a clean table when you stop it.
 
 ```bash
 cd /home/lilly/dev/thymio_swarm/thymio_swarm_platform
 source .venv/bin/activate
 cd examples
-python3 hebbian_pose_calibration.py
-```
-
-While that's running, in a **second terminal**, SSH into each Pi one at a time and watch its
-printed samples:
-
-```bash
-ssh thymio-17     # then repeat for thymio-18, thymio-20
-journalctl -u swarm-daemon.service -f
+python3 hebbian_pose_calibration.py thymio-17
 ```
 
 Physically place the robot at one wall of the actual usable runway, **step away from the
-tracked volume entirely**, then back in the *first* terminal (the one running
-`hebbian_pose_calibration.py`) press `p`. You'll see one printed line on the Pi's journal
-like:
+tracked volume entirely**, then press `p`. Move it to the opposite wall, step clear again,
+press `r` (does the same thing as `p` — either works, see the script's own docstring for
+why) for sample #2. Type `s` to stop — this prints a table of both samples plus, if it found
+two `sim_y` values, a ready-to-use suggestion:
 
 ```
-[thymio-17] SAMPLE #1 (via 'p'): raw position=(...) ... -> sim frame x=... y=1.850 heading=...
+=== thymio-17: 2 sample(s), in order ===
+ sample trigger  ...  sim_x  sim_y  sim_heading
+      1       p  ...  0.021  1.850       -0.041
+      2       r  ...  0.034 -1.760       -0.058
+
+If these were your two corridor-wall samples: CORRIDOR_Y_MIN=-1.760  CORRIDOR_Y_MAX=1.850
+(add a little headroom inward before using these).
 ```
 
-Note that `y` value. Move the robot to the opposite wall, step clear again, and press `r`
-(does the same thing as `p` — either works, see the script's own docstring for why) for
-sample #2. Type `s` to stop the session once you have both readings.
+Repeat the whole command (`python3 hebbian_pose_calibration.py <hostname>`) for each other
+robot — `CORRIDOR_Y_MIN`/`MAX` are shared constants (one corridor), but it's worth sampling
+each robot's own tracking at the same two physical points to make sure they all agree.
 
-`CORRIDOR_Y_MIN` = the smaller of the two sampled `y` values, `CORRIDOR_Y_MAX` = the larger
-— each with a little headroom inward, not the exact wall-touching value.
+`CORRIDOR_Y_MIN`/`MAX` = the smaller/larger of the sampled `sim_y` values — each with a
+little headroom inward, not the exact wall-touching value.
 
 Edit `controller_config.py`:
 ```python

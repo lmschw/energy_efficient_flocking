@@ -30,7 +30,7 @@ actually installed, and where its other example launchers already live.
 | `hebbian_save_battery_avoid_all_best.npy` | The deployed genome -- a copy of `../hebbian_results_v2/hebbian_save_battery_avoid_all_best.npy` (see "Current trial config"). Kept flat here, not referenced from its original location, for the same reason as `swarm_project.yaml`'s note above. |
 | `local_test_harness.py` | Validates the whole pipeline with fake robot/pose objects -- **run this before touching real hardware**, since the platform itself has no dry-run mode at all. |
 | `diagnostics/calibrate_position_heading_experiment.py` | **Calibration helper (current).** Sweeps a series of straight-line drives and derives `POSITION_AXES`, `HEADING_OFFSET_RAD`, AND `MOTOR_UNITS_PER_MPS` all from the same OptiTrack data -- see Calibration below. Supersedes the two files below (kept, not deleted). |
-| `diagnostics/print_poses_experiment.py` | Superseded by `calibrate_position_heading_experiment.py` for position/heading calibration, but still useful as a point-and-sample pose reader -- also now the way to measure `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` (see "Corridor wall safety" below). Rewritten (2026-09-20) from a continuous walk-and-track-min/max design to point-and-sample (place the robot, step clear, trigger a reading via the launcher's 'p'/'r' keys) -- the continuous version required staying near the robot while tracked, which occludes its markers from some camera angles and looks identical to a real bug in the printed numbers. |
+| `diagnostics/print_poses_experiment.py` | Superseded by `calibrate_position_heading_experiment.py` for position/heading calibration, but still useful as a point-and-sample pose reader -- also now the way to measure `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` (see "Corridor wall safety" below). Rewritten (2026-09-20) from a continuous walk-and-track-min/max design to point-and-sample, one robot at a time (place the robot, step clear, trigger a reading via `hebbian_pose_calibration.py <hostname>`'s 'p'/'r' keys) -- the continuous version required staying near the robot while tracked, which occludes its markers from some camera angles and looks identical to a real bug in the printed numbers. The launcher now collects and prints every sample as a table itself (no SSH/journalctl needed for normal use). |
 | `diagnostics/calibrate_speed_experiment.py` | Superseded by `calibrate_position_heading_experiment.py`. Speed-only calibration helper (`MOTOR_UNITS_PER_MPS`) -- kept for a quick narrower recheck if you don't need the other two constants re-verified. |
 
 Controller-side launchers (in `thymio_swarm_platform/examples/`, not here), run in this
@@ -249,22 +249,22 @@ tracked position nears `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` (`controller_config.py`
 the genome's own turning (`w`) untouched. It's a pure speed cap, not a steering override,
 and it is **disabled by default** (`v` passes through unmodified) until both bounds are set.
 
-To measure your real corridor bounds before this trial (point-and-sample, not a continuous
-walk -- see `diagnostics/print_poses_experiment.py`'s docstring for why: staying near the
-robot while it's tracked, e.g. bending over it to move it by hand, reliably occludes its
-markers from some camera angles and not others, which looks identical to a real tracking bug
-in the printed numbers):
-1. Deploy `diagnostics/print_poses_experiment.py` with `config = {"hostnames": [...],
-   "self_hostname": "..."}` (same as position/heading calibration), via
-   `hebbian_pose_calibration.py`.
+To measure your real corridor bounds before this trial (point-and-sample, one robot at a
+time, not a continuous walk -- see `diagnostics/print_poses_experiment.py`'s docstring for
+why: staying near the robot while it's tracked, e.g. bending over it to move it by hand,
+reliably occludes its markers from some camera angles and not others, which looks identical
+to a real tracking bug in the printed numbers):
+1. `python3 hebbian_pose_calibration.py <hostname>` (one robot per run -- see DEPLOY.md for
+   the full walkthrough).
 2. Place the robot at one wall of your actual usable runway, **step clear of the tracked
-   volume**, then press `p` in the controller terminal to take one reading -- printed on
-   the Pi's journal as `SAMPLE #1 ... -> sim frame x=... y=...`. Move it to the opposite
-   wall, step clear again, press `r` for `SAMPLE #2`.
-3. Set `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` in `controller_config.py` to the smaller/larger of
-   those two sampled `y` values (with a little headroom inward, not the exact wall-touching
-   extremes), commit+push, and tune `CORRIDOR_SLOWDOWN_MARGIN_M` to your corridor's real
-   width and the robot's real speed.
+   volume**, then press `p` in the controller terminal to take one reading. Move it to the
+   opposite wall, step clear again, press `r` for a second reading.
+3. Type `s` to stop -- the script collects both samples itself and prints them in a table
+   (no SSH/journalctl needed), including a ready-to-use `CORRIDOR_Y_MIN`/`MAX` suggestion if
+   it found two `sim_y` values.
+4. Set `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` in `controller_config.py` accordingly (with a
+   little headroom inward, not the exact wall-touching extremes), commit+push, and tune
+   `CORRIDOR_SLOWDOWN_MARGIN_M` to your corridor's real width and the robot's real speed.
 
 ## Logged data, and comparing a real trial to the simulation results
 
@@ -398,14 +398,17 @@ sign if it's backwards.
 
 ### Fallback: the old manual/single-purpose scripts still work
 
-`diagnostics/print_poses_experiment.py` (for (1)/(2), by eye) and
+`diagnostics/print_poses_experiment.py` (for (1)/(2), one robot at a time, point-and-sample
+-- see "Corridor wall safety" above for the usage pattern) and
 `diagnostics/calibrate_speed_experiment.py` (for (4) only) are still in this package,
-launched via `thymio_swarm_platform/examples/hebbian_pose_calibration.py` and
+launched via `thymio_swarm_platform/examples/hebbian_pose_calibration.py <hostname>` and
 `hebbian_speed_calibration.py` respectively, in case you want a narrower recheck of just
-one constant, or to watch a robot's raw pose feed live over SSH
-(`journalctl -u swarm-daemon.service -f`) for some other reason. For a normal first
-calibration pass, `hebbian_position_heading_calibration.py` above does the job of both at
-once. One data point worth knowing either way:
+one constant or one robot. `hebbian_pose_calibration.py` collects and prints every sample
+as a table itself now -- watching a robot's raw pose feed live over SSH
+(`journalctl -u swarm-daemon.service -f`) is optional, only useful as a secondary live check.
+For a normal first calibration pass across all robots at once,
+`hebbian_position_heading_calibration.py` above does the job of both at once. One data point
+worth knowing either way:
 `swarm_platform.robot.Robot.get_relative_poses()` itself unpacks a pose's position as
 `ox, _, oz = own_pose.position` — i.e. the platform's own code already assumes a Y-up
 Motive calibration (ground plane = X/Z, axes `(0, 2)`), which matches this file's own
