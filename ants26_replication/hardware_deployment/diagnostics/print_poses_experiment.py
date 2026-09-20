@@ -1,34 +1,44 @@
-"""Calibration helper -- NOT the real controller. An experiment (same contract as
-HebbianSwarmExperiment) that just prints/logs each robot's raw OptiTrack pose and
-derived yaw every tick, so you can determine controller_config.py's POSITION_AXES and
-HEADING_OFFSET_RAD before trusting the real controller.
+"""Calibration helper -- NOT the real controller. Point-and-sample pose reader: place the
+robot at a specific spot, step clear of the tracked volume so your own body isn't occluding
+its markers, then trigger a reading from the controller terminal. Replaces an earlier
+continuous "walk it around and watch the numbers scroll" version -- that approach requires
+staying bent over the robot while it's tracked, which reliably occludes it from some camera
+angles and not others, producing a frozen/stale-looking reading in whichever direction happens
+to be blocked. A real code bug and this occlusion artifact look identical from the printed
+numbers alone (both show "no change"), which is exactly what caused a false "POSITION_AXES
+must be wrong" diagnosis before this rewrite -- sampling only while stationary and clear of
+the robot removes the ambiguity entirely.
 
-How to calibrate:
-1. Deploy this experiment the same way you would the real one (see ../README.md), with
-   config = {"hostnames": [...], "self_hostname": "..."} (no genome_path needed).
-2. Physically point the robot in the direction this codebase's simulation calls
-   heading=0 -- "facing +y" in whichever 2D plane you decide POSITION_AXES selects. If
-   you don't have an independent reference for that, an easier equivalent calibration:
-   point the robot in whatever direction you want to DEFINE as heading=0 for your
-   experiments, note the raw yaw printed here, and set THIS ROBOT'S OWN entry in
-   controller_config.py's HEADING_OFFSET_RAD dict (keyed by its hostname) to minus that
-   value -- the simulation's heading=0 is just a convention, what matters is that your
-   real robots' heading=0 all agrees with each other and with "the goal direction" you
-   want them walking toward (recall: the trained controller always walks toward -x in
-   its own frame, so whichever physical direction you calibrate as heading=0 is the
-   direction the swarm will try to migrate away from). HEADING_OFFSET_RAD is per-robot,
-   not one shared constant -- real robots have disagreed by more than measurement noise
-   would explain (see that dict's comment in controller_config.py), so calibrate and set
-   each robot's entry separately rather than assuming one value works for all of them.
-3. Try both POSITION_AXES = (0, 1) and (0, 2) (and (1, 2) if neither looks right) --
-   whichever pair produces (x, y) values that visibly change the way you'd expect as you
-   physically move the robot around your tracked volume is the correct one for your
-   Motive calibration.
-4. If the robot turns the wrong way once you deploy the real controller (spins away
-   from, rather than toward, where the sensed neighbors/geometry should steer it),
-   flip ROTATION_SIGN and re-test -- this script only helps calibrate position axes and
-   the zero-heading offset, not rotation sign (that's easiest to just observe directly
-   from the real controller's behavior).
+How to use, deployed via `hebbian_pose_calibration.py` (same launcher as before -- no changes
+needed there beyond its printed instructions):
+1. Deploy this experiment (config = {"hostnames": [...], "self_hostname": "..."}, no
+   genome_path needed) -- see ../README.md.
+2. Physically place the robot at the first point you want to measure (e.g. against one
+   wall), then STEP AWAY from the tracked volume entirely.
+3. In the controller terminal's `[p]ause  [r]esume  [s]top >` prompt, press `p` (or `r` --
+   both do the same thing here, see below). This takes exactly one fresh pose reading right
+   then and prints/logs it as a numbered sample.
+4. Move the robot to the next point you want to measure (e.g. the opposite wall), step away
+   again, and press `p`/`r` again for sample #2. Repeat for as many points as you need.
+5. Press `s` to stop when done.
+
+For CORRIDOR_Y_MIN/CORRIDOR_Y_MAX specifically: sample at each wall (step 2-4 above), then
+set CORRIDOR_Y_MIN to the smaller of the two printed "sim frame y" values and
+CORRIDOR_Y_MAX to the larger, each with a little headroom inward (see controller_config.py's
+comment on CORRIDOR_SLOWDOWN_MARGIN_M for how much margin makes sense for your setup).
+
+Why `pause()` and `resume()` both trigger a sample rather than actually pausing/resuming
+anything: this experiment doesn't drive the robot or run any continuous loop that needs
+pausing -- `run()` just idles. Reusing the existing pause/resume session messages as the
+"take a sample now" trigger means the already-existing `[p]/[r]/[s]` interactive prompt in
+every controller-side launcher works as-is, with no changes needed to the daemon/coordinator
+protocol or to hebbian_pose_calibration.py's actual logic (only its printed instructions were
+updated to describe this new usage).
+
+Also still useful for POSITION_AXES/HEADING_OFFSET_RAD calibration (the original purpose):
+place the robot at a known position/heading, sample, and compare the printed raw position/
+raw_yaw to what you expect -- just do it as discrete stationary samples now, not a continuous
+walk.
 """
 import asyncio
 import os
@@ -49,56 +59,65 @@ class PrintPosesExperiment:
         self.config = config or {}
         self.logger = logger
         self.running = True
-        self.paused = False
         self.hostnames = list(self.config.get("hostnames", []))
         self.self_hostname = self.config.get("self_hostname")
-        self._min_y = None  # running min/max of sim-frame y across this whole run --
-        self._max_y = None  # walk a robot to each wall and read these off directly to
-                             # get CORRIDOR_Y_MIN/MAX for controller_config.py's corridor
-                             # speed-safety governor (see hebbian_swarm_experiment.py).
+        self._sample_count = 0
 
     async def run(self):
+        # All real work happens in _sample() below, triggered by pause()/resume() (i.e. the
+        # controller terminal's 'p'/'r' keys) -- see module docstring for why. Idle otherwise,
+        # deliberately not polling/printing continuously: this experiment is meant to be used
+        # while standing clear of the robot, not while watching a live feed over its shoulder.
         while self.running:
-            if self.paused:
-                await asyncio.sleep(0.1)
-                continue
+            await asyncio.sleep(0.1)
 
-            poses = await self.robot.get_all_global_poses()
-            own_pose = poses.get(self.self_hostname)
-            if own_pose is None:
-                print(f"[{self.self_hostname}] not currently tracked (outside volume, "
-                      f"or tracking hasn't started yet)")
-            else:
-                raw_yaw = quaternion_to_yaw(*own_pose.orientation)
-                line = (f"[{self.self_hostname}] raw position={own_pose.position} "
-                        f"raw_yaw={raw_yaw:+.3f} rad ({raw_yaw * 180 / 3.14159:+.1f} deg)")
-                if self.hostnames:
-                    agents, self_index = poses_to_agents(poses, self.hostnames, self.self_hostname)
-                    x, y, heading = agents[self_index, 0], agents[self_index, 1], agents[self_index, 2]
-                    applied_offset = cfg.HEADING_OFFSET_RAD.get(
-                        self.self_hostname, cfg.HEADING_OFFSET_RAD_DEFAULT)
-                    line += (f" | with POSITION_AXES={cfg.POSITION_AXES}, "
-                             f"HEADING_OFFSET_RAD[{self.self_hostname}]={applied_offset} "
-                             f"(dict has {list(cfg.HEADING_OFFSET_RAD.keys())}), "
-                             f"ROTATION_SIGN={cfg.ROTATION_SIGN} -> sim frame "
-                             f"x={x:.3f} y={y:.3f} heading={heading:+.3f} rad")
-                    if abs(y) < cfg.UNTRACKED_XY_THRESHOLD:
-                        self._min_y = y if self._min_y is None else min(self._min_y, y)
-                        self._max_y = y if self._max_y is None else max(self._max_y, y)
-                        line += (f" | corridor y range seen so far: "
-                                 f"[{self._min_y:.3f}, {self._max_y:.3f}] (walk to each wall "
-                                 f"to find CORRIDOR_Y_MIN/MAX for controller_config.py)")
-                print(line)
-                if self.logger:
-                    self.logger.log(state={"raw_yaw": raw_yaw, "position": own_pose.position}, command={})
+    async def _sample(self, trigger):
+        self._sample_count += 1
+        n = self._sample_count
+        poses = await self.robot.get_all_global_poses()
+        own_pose = poses.get(self.self_hostname)
 
-            await asyncio.sleep(0.5)  # matches OptiTrack's own push rate -- no point polling faster
+        if own_pose is None:
+            print(f"[{self.self_hostname}] SAMPLE #{n} (via '{trigger}'): NOT TRACKED -- "
+                  f"check the robot is inside the tracked volume and its markers aren't "
+                  f"occluded, then retry.")
+            return
+
+        raw_yaw = quaternion_to_yaw(*own_pose.orientation)
+        line = (f"[{self.self_hostname}] SAMPLE #{n} (via '{trigger}'): "
+                f"raw position={own_pose.position} raw_yaw={raw_yaw:+.3f} rad "
+                f"({raw_yaw * 180 / 3.14159:+.1f} deg)")
+
+        sim_x = sim_y = sim_heading = None
+        if self.hostnames:
+            agents, self_index = poses_to_agents(poses, self.hostnames, self.self_hostname)
+            sim_x, sim_y, sim_heading = (float(agents[self_index, 0]),
+                                          float(agents[self_index, 1]),
+                                          float(agents[self_index, 2]))
+            applied_offset = cfg.HEADING_OFFSET_RAD.get(
+                self.self_hostname, cfg.HEADING_OFFSET_RAD_DEFAULT)
+            line += (f" | with POSITION_AXES={cfg.POSITION_AXES}, "
+                     f"HEADING_OFFSET_RAD[{self.self_hostname}]={applied_offset} "
+                     f"(dict has {list(cfg.HEADING_OFFSET_RAD.keys())}), "
+                     f"ROTATION_SIGN={cfg.ROTATION_SIGN} -> sim frame "
+                     f"x={sim_x:.3f} y={sim_y:.3f} heading={sim_heading:+.3f} rad")
+            if sim_y is not None and abs(sim_y) < cfg.UNTRACKED_XY_THRESHOLD:
+                line += (f" | for CORRIDOR_Y_MIN/MAX: use this y value if this point is "
+                         f"at (or just inside) a wall")
+
+        print(line)
+        if self.logger:
+            self.logger.log(
+                state={"sample": n, "trigger": trigger, "position": own_pose.position,
+                       "raw_yaw": raw_yaw, "sim_x": sim_x, "sim_y": sim_y,
+                       "sim_heading": sim_heading},
+                command={})
 
     async def pause(self):
-        self.paused = True
+        await self._sample("p")
 
     async def resume(self):
-        self.paused = False
+        await self._sample("r")
 
     async def stop(self):
         self.running = False

@@ -30,7 +30,7 @@ actually installed, and where its other example launchers already live.
 | `hebbian_save_battery_avoid_all_best.npy` | The deployed genome -- a copy of `../hebbian_results_v2/hebbian_save_battery_avoid_all_best.npy` (see "Current trial config"). Kept flat here, not referenced from its original location, for the same reason as `swarm_project.yaml`'s note above. |
 | `local_test_harness.py` | Validates the whole pipeline with fake robot/pose objects -- **run this before touching real hardware**, since the platform itself has no dry-run mode at all. |
 | `diagnostics/calibrate_position_heading_experiment.py` | **Calibration helper (current).** Sweeps a series of straight-line drives and derives `POSITION_AXES`, `HEADING_OFFSET_RAD`, AND `MOTOR_UNITS_PER_MPS` all from the same OptiTrack data -- see Calibration below. Supersedes the two files below (kept, not deleted). |
-| `diagnostics/print_poses_experiment.py` | Superseded by `calibrate_position_heading_experiment.py` for position/heading calibration, but still useful as a live raw-pose viewer -- also now the way to measure `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` (see "Corridor wall safety" below): it tracks and prints a running min/max of sim-frame `y` as you walk a robot around. |
+| `diagnostics/print_poses_experiment.py` | Superseded by `calibrate_position_heading_experiment.py` for position/heading calibration, but still useful as a point-and-sample pose reader -- also now the way to measure `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` (see "Corridor wall safety" below). Rewritten (2026-09-20) from a continuous walk-and-track-min/max design to point-and-sample (place the robot, step clear, trigger a reading via the launcher's 'p'/'r' keys) -- the continuous version required staying near the robot while tracked, which occludes its markers from some camera angles and looks identical to a real bug in the printed numbers. |
 | `diagnostics/calibrate_speed_experiment.py` | Superseded by `calibrate_position_heading_experiment.py`. Speed-only calibration helper (`MOTOR_UNITS_PER_MPS`) -- kept for a quick narrower recheck if you don't need the other two constants re-verified. |
 
 Controller-side launchers (in `thymio_swarm_platform/examples/`, not here), run in this
@@ -249,14 +249,22 @@ tracked position nears `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` (`controller_config.py`
 the genome's own turning (`w`) untouched. It's a pure speed cap, not a steering override,
 and it is **disabled by default** (`v` passes through unmodified) until both bounds are set.
 
-To measure your real corridor bounds before this trial:
+To measure your real corridor bounds before this trial (point-and-sample, not a continuous
+walk -- see `diagnostics/print_poses_experiment.py`'s docstring for why: staying near the
+robot while it's tracked, e.g. bending over it to move it by hand, reliably occludes its
+markers from some camera angles and not others, which looks identical to a real tracking bug
+in the printed numbers):
 1. Deploy `diagnostics/print_poses_experiment.py` with `config = {"hostnames": [...],
-   "self_hostname": "..."}` (same as position/heading calibration).
-2. Walk (or drive) the robot to each wall of your actual usable runway -- it prints a
-   running `corridor y range seen so far: [min, max]` as you go.
-3. Set `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` in `controller_config.py` to those values (with a
-   little headroom inward, not the exact wall-touching extremes), commit+push, and tune
-   `CORRIDOR_SLOWDOWN_MARGIN_M` to your corridor's real width and the robot's real speed.
+   "self_hostname": "..."}` (same as position/heading calibration), via
+   `hebbian_pose_calibration.py`.
+2. Place the robot at one wall of your actual usable runway, **step clear of the tracked
+   volume**, then press `p` in the controller terminal to take one reading -- printed on
+   the Pi's journal as `SAMPLE #1 ... -> sim frame x=... y=...`. Move it to the opposite
+   wall, step clear again, press `r` for `SAMPLE #2`.
+3. Set `CORRIDOR_Y_MIN`/`CORRIDOR_Y_MAX` in `controller_config.py` to the smaller/larger of
+   those two sampled `y` values (with a little headroom inward, not the exact wall-touching
+   extremes), commit+push, and tune `CORRIDOR_SLOWDOWN_MARGIN_M` to your corridor's real
+   width and the robot's real speed.
 
 ## Logged data, and comparing a real trial to the simulation results
 
