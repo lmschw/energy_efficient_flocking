@@ -206,6 +206,18 @@ class HebbianSwarmExperiment:
         if cfg.BATTERY_MODE == "none":
             x_in[8] = cfg.BATTERY_SENSOR_PLACEHOLDER
 
+        # TEMPORARY DEBUG (2026-09-20) -- diagnosing "robot behaves the same regardless
+        # of real inter-robot distance" by checking what the network actually receives,
+        # instead of inferring it from code review. front/back/right/left_d are
+        # sensor_model.py's normalized quadrant distances: +1.0 means "no neighbor found
+        # in that quadrant within SENSING_RADIUS" (either truly out of range, or agents
+        # array effectively has this robot alone in it); anything less than +1.0 means a
+        # real neighbor was sensed there. n_agents_seen is agents.shape[0] as a sanity
+        # check that the array itself has all 3 rows. Remove once diagnosed.
+        _debug_n_agents = int(agents.shape[0])
+        _debug_front_d, _debug_back_d = float(x_in[0]), float(x_in[2])
+        _debug_right_d, _debug_left_d = float(x_in[4]), float(x_in[6])
+
         v, w, self.w1, self.w2, self.w3 = hebbian_step(x_in, self.w1, self.w2, self.w3, self.rules)
         if self_tracked:
             # min(), not product -- matches simulation_hebbian.py's own
@@ -230,7 +242,10 @@ class HebbianSwarmExperiment:
                        "heading": float(agents[self_index, 2]), "battery": float(self.battery),
                        "raw_x": raw_position[0], "raw_y": raw_position[1], "raw_z": raw_position[2],
                        "qx": raw_orientation[0], "qy": raw_orientation[1],
-                       "qz": raw_orientation[2], "qw": raw_orientation[3]},
+                       "qz": raw_orientation[2], "qw": raw_orientation[3],
+                       "n_agents_seen": _debug_n_agents, "front_d": _debug_front_d,
+                       "back_d": _debug_back_d, "right_d": _debug_right_d,
+                       "left_d": _debug_left_d},
                 command={"v": float(v), "w": float(w), "left": left, "right": right},
             )
         return v, w, left, right
