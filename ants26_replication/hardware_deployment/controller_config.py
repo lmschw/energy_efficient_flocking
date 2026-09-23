@@ -159,22 +159,32 @@ ROTATION_SIGN = 1.0
 
 UP_AXIS_PLAUSIBLE_RANGE_M = (-0.5, 0.5)
 # Sanity band for the raw "up" axis (whichever raw component POSITION_AXES excludes --
-# raw_y on this confirmed Y-up rig) of any TRACKED robot -- pose_utils.poses_to_agents()
-# warns (does not discard/replace the pose) if a robot's up-axis reading falls outside
-# this band. Exists because a rigid body can silently solve against the wrong markers
-# (a stray reflection, a ceiling fixture, an unstable marker set) and keep reporting a
-# perfectly well-formed but physically implausible pose with no error from Motive/NatNet
-# -- confirmed on this rig: a "tracking_update" snapshot showed 2 robots reportedly
-# sitting ~20cm apart on the floor with raw_y=0.143 and raw_y=-0.341 (a robots-on-a-flat-
-# floor spread this config treats as normal -- hence the wide +/-0.5m band, not a tight
-# one), while a THIRD robot in the same line read raw_y=2.168 -- over 2 METERS higher,
-# with no plausible floor tilt/calibration-skew explanation for that from a 20cm run.
-# That third robot's rigid body was almost certainly not tracking the robot at all. This
-# band is deliberately generous (catches gross, multi-meter-scale failures like that one,
-# not precision floor-height deviations) -- tighten it once you've confirmed what a
-# genuinely stable, correctly-tracked floor reading looks like for your current Motive
-# session, since the coordinate origin/ground-plane calibration (and therefore what
-# "near zero" even means) is not guaranteed to match between sessions.
+# raw_y on this confirmed Y-up rig) of any TRACKED robot. pose_utils.poses_to_agents()
+# REJECTS a robot's reading outright (treats it exactly like "no pose at all" -- the
+# (1e4, 1e4) untracked sentinel, not a discarded-but-otherwise-used value) if its up-axis
+# falls outside this band, rather than merely warning and still acting on it -- there is
+# no way to tell a genuinely bad x/y/heading apart from a coincidentally plausible-
+# looking one once a rigid body has locked onto the wrong object, so partial trust isn't
+# an option here. Exists because a rigid body can silently solve against the wrong
+# markers (a stray reflection, a ceiling fixture, an unstable marker set) and keep
+# reporting a perfectly well-formed but physically implausible pose with no error from
+# Motive/NatNet -- confirmed on this rig, and not a one-off: a single stray object
+# sitting stationary near raw_y=2.2m (roughly ceiling height, nowhere near where a robot
+# sits) "stole" the rigid-body identity of SIX different robots in turn over one ~30s
+# window, each reporting a perfectly well-formed pose within 5cm of the SAME physical
+# point instead of its own real one. A separate legitimate "tracking_update" snapshot
+# showed 2 robots genuinely sitting ~20cm apart on the floor with raw_y=0.143 and
+# raw_y=-0.341 (a robots-on-a-flat-floor spread this config treats as normal -- hence the
+# wide +/-0.5m band, not a tight one). This band is deliberately generous (catches gross,
+# multi-meter-scale failures like the ghost-object case, not precision floor-height
+# deviations) -- tighten it once you've confirmed what a genuinely stable, correctly-
+# tracked floor reading looks like for your current Motive session, since the coordinate
+# origin/ground-plane calibration (and therefore what "near zero" even means) is not
+# guaranteed to match between sessions. If you can locate and physically remove/cover the
+# stray reflective object, this filter becomes pure defense-in-depth rather than the only
+# thing standing between the controller and garbage position data -- worth still keeping
+# either way, since a real robot rigid body losing lock some other way is exactly the
+# same failure mode.
 
 # =====================================================================================
 # --- Corridor wall safety (deployment-only -- NOT a trained genome behavior) ---------
