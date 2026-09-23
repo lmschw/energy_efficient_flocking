@@ -32,6 +32,38 @@ COLLISION_MIN_DIST_SLACK = 0.01      # min_dist = COLLISION_MIN_DIST_SLACK + 2*R
 WALL_MARGIN_FACTOR = 0.5             # wall_margin = ROBOT_RAD * WALL_MARGIN_FACTOR
 WALL_COLLISION_WEIGHT = 3            # each wall hit counts as this many collisions (LJ baseline only)
 
+# --- Inter-agent/wall safety clamp, collision resolution, and graduated proximity penalty ---
+# Ported verbatim (same active values, not re-derived) from ../upwind_safety_variant/config.py
+# -- this is the exact training-time safety machinery plain_seed123_clamped was evolved under.
+# See that file's much longer historical comments beside each constant for the full tuning
+# investigation; only the final, active values are carried over here since the point of this
+# variant is to reuse the SAME recipe with a different sensor model, not to re-derive it.
+HEBBIAN_MIN_DIST_INFLATION = 1.3     # sim-to-real training margin (collision counting/instant-
+                                      # death/proximity-penalty only, NOT sensor or wind physics)
+HEBBIAN_SAFETY_CLAMP_ENABLED = True  # hard, non-learned forward-speed cap based on current gap
+                                      # to nearest neighbor/wall; turning is left untouched
+HEBBIAN_SAFETY_CLAMP_OUTER_GAP = 0.30   # gap at which braking begins (full speed above this)
+HEBBIAN_SAFETY_CLAMP_INNER_GAP = 0.05   # gap at which forward speed reaches zero
+HEBBIAN_WALL_SAFETY_CLAMP_OUTER_GAP = 0.15   # same idea, against the nearest wall
+HEBBIAN_WALL_SAFETY_CLAMP_INNER_GAP = 0.02
+HEBBIAN_RESOLVE_COLLISIONS = True            # physically push overlapping agents apart each step
+HEBBIAN_RESOLVE_COLLISIONS_STRENGTH = 0.5    # fraction of the gap closed per resolution pass
+HEBBIAN_RESOLVE_COLLISIONS_MAX_ITER = 2      # resolution passes per step
+HEBBIAN_COLLISION_INSTANT_DEATH = False      # if True, any pair crossing min_dist ends the episode
+HEBBIAN_PROXIMITY_OUTER_GAP = 0.30   # CHANGED from the ported 1.0*ROBOT_RAD (0.055m) -- widened
+HEBBIAN_PROXIMITY_INNER_GAP = 0.05   # to exactly match HEBBIAN_SAFETY_CLAMP_OUTER_GAP/INNER_GAP
+HEBBIAN_PROXIMITY_STEEP_MULT = 10.0  # above. Rationale: THYMIO_IR_RANGE is only 0.12m, but the
+# hard safety clamp starts braking at 0.30m gap -- meaning the agent is sensing-blind for the
+# entire zone where the clamp is already overriding its own forward-speed decision, so nothing
+# ever taught it to keep clear BEFORE that external override takes over. This penalty is computed
+# from the true simulated distance (not the agent's own IR reading), so it can give CMA-ES a
+# training-time incentive to avoid crowding well before contact even though the agent itself
+# can't perceive that far -- evolution doesn't need the agent to SENSE the danger to be
+# PENALIZED for causing it. Matching the clamp's own thresholds exactly makes the fitness
+# pressure track when/how the clamp will actually engage. Enabled via proximity_w below
+# (replacing the flat inter-robot collision_time term for save_battery_avoid_all, per the
+# established convention -- see that constant's comment in ../upwind_safety_variant/config.py).
+
 # --- Wind-tracking camera window (the x-range RayTraceCircularRobots is evaluated over) ---
 WIND_TRACKING_WINDOW_WIDTH = 10.0    # total width of the tracking window [m] (nominally X_RANGE's span)
 WIND_TRACKING_MAX_SPAN = 9.8         # cap on the swarm's own x-extent within that window [m]
@@ -63,9 +95,15 @@ DRAG_COEFFICIENT_AREA = 0.0045          # effective drag coefficient * frontal a
 # --- Battery drainage (batterydrainage) ---
 BATTERY_WHEEL_POWER_DIVISOR = 4.0    # divisor applied to summed absolute wheel speeds
 BATTERY_MIN_DRAIN = 0.10             # floor on per-step drain (idle power draw)
-BATTERY_DRAIN_SCALE = 1.0            # overall drain multiplier -- matches the paper's Eq. 6
-                                      # literally (B -= P_use*dt, no extra scale), same fix as
-                                      # ants26_replication/experiment/'s paperbattery experiment.
+BATTERY_DRAIN_SCALE = 2.0            # CORRECTED from the 1.0 this variant previously used --
+                                      # ../upwind_safety_variant/config.py's own comment on this
+                                      # constant found that 1.0 was a mistake (the paper's Eq. 6
+                                      # prose doesn't match its own MATLAB reference, which
+                                      # literally does `agents(:,4) -= 2*batt_drain(:)`); 1.0
+                                      # roughly tripled episode length and produced worse-than-
+                                      # baseline results across every variant tried under it.
+                                      # Matching that correction here so this recipe is trained
+                                      # under the same battery dynamics as plain_seed123_clamped.
 
 # --- Video output (visualize_hebbian.py) ---
 HEBBIAN_VIDEO_PATH = "hebbian_alone.mp4"
@@ -191,29 +229,47 @@ HEBBIAN_BATCH_SEEDS = [42, 123, 777, 2026, 888, 99, 412, 555, 1010, 8432]
 # be what pushes evolution toward formation-reconfiguration strategies. Each stage's CMA-ES
 # run is seeded from the previous stage's best genome ("Next stage: best x is initial x" in
 # Fig. 1); stage 1 alone starts from a fresh uniform-random ABCD_init.
-HEBBIAN_STAGES = ("walk_left", "save_battery_avoid_wall", "save_battery_avoid_all")
+HEBBIAN_STAGES = ("walk_upwind", "save_battery_avoid_wall", "save_battery_avoid_all")
+# CHANGED from ("walk_left", ...) to reuse the exact plain_seed123_clamped recipe
+# (../upwind_safety_variant/) -- stage 1 trains WITH wind enabled, rewarding progress
+# against it (WIND_DIRECTION below) instead of the original wind-free walk_left. See
+# ../upwind_safety_variant/config.py's module docstring for the full rationale.
 HEBBIAN_STAGE_WIND_ENABLED = {
-    "walk_left": False,
+    "walk_upwind": True,
     "save_battery_avoid_wall": True,
     "save_battery_avoid_all": True,
 }
+# WIND_DIRECTION: unit-ish vector dist_travelled is projected onto (simulation_hebbian.py) --
+# (-1, 0) points the same way the old bare "-x" did (wind blows toward +x, see
+# wind_physics.py's wake propagation), so this is "into the wind". Only actually stage-1-
+# relevant since that's the only stage now trained with wind enabled from a fresh genome.
+WIND_DIRECTION = (-1.0, 0.0)
 # Fitness weights per stage: eff = HEBBIAN_EFF_DISTANCE_WEIGHT*dist + batt/BATTERY_W -
 # (collision_time + WALL_COL_MULT * wall_collision_time) / COLLISION_W - cohesion_dist /
-# COHESION_W. A weight of None means that term is entirely absent (matching Table 2's
-# stage 1 having no battery or collision terms, and stages 2/3 excluding inter-robot/
-# wall collisions respectively from view of that specific denominator).
+# COHESION_W - proximity_penalty / PROXIMITY_W. A weight of None means that term is
+# entirely absent. proximity_w (added alongside the safety-clamp/collision machinery
+# above) is normally None here since collision_w's flat inter-robot penalty is what
+# plain_seed123_clamped was actually trained under -- see ../upwind_safety_variant/
+# config.py's own history for the (concluded, not adopted) graduated-penalty experiments.
 HEBBIAN_STAGE_FITNESS_WEIGHTS = {
-    #                             battery_w   collision_w   wall_col_mult   include_inter_robot_collision   cohesion_w
-    "walk_left":                 (None,        None,         3.0,            False,                          None),
-    "save_battery_avoid_wall":   (5.0,         500.0,        3.0,            False,                          None),
-    "save_battery_avoid_all":    (5.0,         250.0,        3.0,            True,                           None),
+    #                             battery_w   collision_w   wall_col_mult   include_inter_robot_collision   cohesion_w   proximity_w
+    "walk_upwind":                (None,        None,         3.0,            False,                          None,        None),
+    "save_battery_avoid_wall":   (5.0,         500.0,        3.0,            False,                          None,        None),
+    "save_battery_avoid_all":    (5.0,         250.0,        3.0,            False,                          None,        250.0),
 }
-# Reset to the ORIGINAL/paper-default weights (collision_w=250, no cohesion term) --
-# deliberately NOT carrying over the collision_w=15/cohesion_w tuning from the
-# collision+cohesion investigation (../experiment/config.py). This variant tests a
-# different, orthogonal question (sensing realism, see sensor_model.py) and mixing in
-# those still-unvalidated fitness-weight changes would confound which change caused
-# whatever difference shows up in results.
+# save_battery_avoid_all: include_inter_robot_collision flipped True->False and proximity_w set
+# to 250.0 (CHANGED from the plain_seed123_clamped-matching (True, None) this variant started
+# with) -- replacing the flat inter-robot collision_time penalty with the graduated
+# HEBBIAN_PROXIMITY_* warning term (now widened to match the safety clamp, see that constant's
+# comment) as the anticipatory shaping signal for THIS variant specifically. wall_col_mult/
+# collision_w still apply to WALL collisions only, unaffected -- this mirrors the exact pattern
+# already validated (though not adopted) in ../upwind_safety_variant/config.py's own proximity-
+# penalty history. proximity_w=250.0 matches collision_w's established convention. Rationale for
+# trying this HERE even though it wasn't adopted for the idealized sensor: that decision assumed
+# a sensor that could already perceive neighbors well beyond the clamp's 0.30m engagement gap
+# (2.01m sensing radius), so the flat penalty had enough of a training signal to work with. The
+# IR sensor's 0.12m range can't reach that far, so this variant needs its own fitness-side
+# workaround for the same structural gap the idealized sensor never had.
 # Explicit distance weight, mirroring the LJ model's own EFF_DISTANCE_WEIGHT --
 # Table 2's literal formula has no such multiplier (dist_travelled has an implicit
 # weight of 1.0), which measurably let CMA-ES discover that barely moving is a cheap way

@@ -5,11 +5,13 @@ VARIANT of ../experiment/: sensor_model.get_sensor_data() is REPLACED entirely -
 idealized 4-quadrant range/bearing neighbor sensor -- see sensor_model.py's module
 docstring and config.py's "Neural controller architecture" comment for the full
 rationale (closing the sim-to-real sensing gap documented in
-../hardware_deployment/README.md). HEBBIAN_N_INPUTS=9 (was 10); everything else
-(curriculum, fitness weights, wind/battery physics) is unchanged from ../experiment/.
+../hardware_deployment/README.md). HEBBIAN_N_INPUTS=9 (was 10). The curriculum/fitness/
+safety-clamp machinery below matches ../upwind_safety_variant/ (the recipe that produced
+the deployed plain_seed123_clamped genome) exactly, so this variant tests the SAME
+recipe against real IR sensing instead of the idealized quadrant sensor.
 
 Three sequential stages of increasing task complexity (Table 2 / Fig. 1):
-  1. walk_left                  -- wind disabled, fitness = distance only
+  1. walk_upwind                 -- wind enabled, fitness = progress against the wind only
   2. save_battery_avoid_wall    -- wind enabled, + battery term, + wall-collision penalty
   3. save_battery_avoid_all     -- wind enabled, + battery term, + wall AND inter-robot collision penalty
 
@@ -65,11 +67,11 @@ def fitness_wrapper(genome):
     for r in range(active_n_repeats):
         seed = active_seed_base + current_candidate * 1000 + r  # distinct seed per repeat, per candidate
         try:
-            dist, batt, ct, wct, coh = simulate_hebbian_episode(
+            dist, batt, ct, wct, coh, prox = simulate_hebbian_episode(
                 rules, seed=seed, n_agents=active_n_agents, wind_enabled=wind_enabled,
                 max_battery=active_max_battery, min_battery=active_min_battery,
                 nx=active_nx, ny=active_ny, use_battery_sensor=active_use_battery_sensor)
-            effs.append(stage_fitness(dist, batt, ct, wct, coh, active_stage))
+            effs.append(stage_fitness(dist, batt, ct, wct, coh, prox, active_stage))
         except Exception as e:
             print(f"\n⚠️  Candidate {current_candidate} repeat {r} failed "
                   f"({type(e).__name__}: {e}) -- treating as worst-case for this repeat")
