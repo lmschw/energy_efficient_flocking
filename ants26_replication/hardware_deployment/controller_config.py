@@ -282,12 +282,38 @@ CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # unclamped one -- confirmed necessary, not optional (this was nearly missed: nothing in this
 # package enforced it before 2026-09-16, only the corridor/wall case below existed). Applied
 # in hebbian_swarm_experiment.py._tick() the same way as the corridor governor: scales v only
-# (never w) using the SAME thresholds and TRUE (uninflated) ROBOT_RAD the training run used.
-AGENT_SAFETY_CLAMP_OUTER_GAP = 0.30   # gap [m] at which braking begins (full speed above this)
-AGENT_SAFETY_CLAMP_INNER_GAP = 0.05   # gap [m] at which forward speed reaches zero (contact)
-# Matches experiment/config.py's HEBBIAN_SAFETY_CLAMP_OUTER_GAP/INNER_GAP exactly -- these
-# are NOT independently tunable the way CORRIDOR_SLOWDOWN_MARGIN_M is; changing them without
-# retraining would clamp the genome under DIFFERENT conditions than it was evolved against.
+# (never w), using the TRUE (uninflated) ROBOT_RAD the training run used but -- see the
+# 2026-09-23 note below -- DELIBERATELY LOOSENED thresholds rather than the exact training
+# values, a real off-distribution tradeoff made after a genuine deadlock, not an oversight.
+AGENT_SAFETY_CLAMP_OUTER_GAP = 0.12   # gap [m] at which braking begins (full speed above this)
+AGENT_SAFETY_CLAMP_INNER_GAP = -0.03  # gap [m] at which forward speed reaches zero (contact)
+# LOOSENED (2026-09-23) from the original 0.30/0.05 -- which matched experiment/config.py's
+# HEBBIAN_SAFETY_CLAMP_OUTER_GAP/INNER_GAP exactly -- after real trial data showed thymio-09
+# and thymio-11 fully deadlocked: nearest_gap computed as -0.043m (center distance 0.067m,
+# 2*ROBOT_RAD=0.11m), clipped to a scale of exactly 0.0, forcing v to zero for BOTH robots
+# with no way to recover since the clamp suppresses v regardless of sign -- they couldn't
+# even back away from each other, only rotate (w is never clamped). This may well be the
+# same underlying mechanism behind the "spins but never translates" symptom seen throughout
+# this investigation, not just this one trial.
+#
+# A measured gap of -0.043m is itself informative: two solid ~11cm-diameter Thymios cannot
+# physically overlap by 4.3cm, so that reading has to include several cm of real OptiTrack
+# tracking noise/marker-offset, not genuine contact. The original 0.30/0.05 thresholds were
+# also just wider than the formation spacing actually used in testing (0.30 surface gap is
+# 0.41m center-to-center, well above the ~20-50cm this project has been placing/observing
+# robots at), so braking was likely at least partially active for most of every trial run.
+#
+# IMPORTANT CAVEAT (explicit user decision to accept this tradeoff, 2026-09-23): unlike
+# CORRIDOR_SLOWDOWN_MARGIN_M, this constant IS coupled to what plain_seed123_clamped's
+# weights were actually shaped by during training (see
+# ants26_replication/upwind_safety_variant/run_2stage_upwind_clamped.py's use of these same
+# values) -- loosening it does not just reduce collision margin, it also deploys the genome
+# under braking dynamics measurably different from what it was evolved against. This was a
+# deliberate, explicit tradeoff (mobility over exactly-matching the trained distribution),
+# not a bug fix. If collisions/deadlocks recur, prefer addressing WHY robots converge this
+# close in the first place (placement, or an emergent behavior worth its own investigation)
+# over loosening further -- INNER_GAP is already negative, i.e. already tolerating apparent
+# overlap, not just reduced margin above contact.
 
 # =====================================================================================
 # --- Simulated battery drainage (BATTERY_MODE == "simulated") ------------------------
