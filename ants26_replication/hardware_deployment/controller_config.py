@@ -213,12 +213,24 @@ UP_AXIS_PLAUSIBLE_RANGE_M = (-0.5, 0.5)
 # scaled down near a wall even if the robot happens to already be heading away from it --
 # simpler and strictly safer than trying to also read intent from heading, at the cost
 # of some unnecessary slowdown in that case.
-CORRIDOR_Y_MIN = 0.327   # meters, sim-frame y (agents[:, 1]) -- measure by deploying
-CORRIDOR_Y_MAX = 1.229   # diagnostics/print_poses_experiment.py (with hostnames/
-                         # self_hostname set) and walking a robot to each wall; it prints
-                         # a running min/max of y for exactly this purpose. The governor
-                         # is disabled (v passes through unmodified) while either is
-                         # None -- set BOTH before relying on it to prevent wall strikes.
+CORRIDOR_Y_MIN = None   # meters, sim-frame y (agents[:, 1]) -- measure with
+CORRIDOR_Y_MAX = None   # hebbian_pose_calibration.py <hostname> (point-and-sample at
+                         # each wall) and set BOTH before relying on this to prevent wall
+                         # strikes. RESET TO None (2026-09-23): the previous 0.327/1.229
+                         # values were stale from an earlier calibration session and no
+                         # longer bracket the room's real y-range at all -- confirmed via
+                         # real trial data showing every robot's actual sim_y around
+                         # -1.2, nowhere near that window, so the corridor governor was
+                         # silently zeroing every robot's forward speed unconditionally,
+                         # everywhere in the room, regardless of tracking quality or
+                         # neighbor visibility -- this was the actual cause of robots
+                         # only ever spinning in place, not a tracking-quality issue.
+                         # The governor is disabled (v passes through unmodified) while
+                         # either is None, which is deliberate here: do NOT re-enable
+                         # with guessed numbers -- recalibrate for real against the
+                         # CURRENT session's actual corridor before setting these again,
+                         # since walking into a real wall is what this governor exists to
+                         # prevent.
 CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # v scales linearly from 1.0 (at this distance or farther from either wall) to 0.0 (at
 # the wall) over this margin. Tune to your corridor's real width and the robot's real
