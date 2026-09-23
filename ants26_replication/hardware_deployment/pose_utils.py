@@ -36,6 +36,31 @@ _warned_missing_offset_hosts = set()  # module-level: print the fallback warning
                                        # CONTROL_TICK_SECONDS, so a per-call warning would
                                        # flood the log within seconds).
 
+_UP_AXIS_INDEX = ({0, 1, 2} - set(cfg.POSITION_AXES)).pop()
+# The one raw position component POSITION_AXES doesn't use for the ground plane -- see
+# cfg.UP_AXIS_PLAUSIBLE_RANGE_M's comment for why this is worth checking at all: a rigid
+# body can solve against the wrong markers and keep reporting a well-formed but
+# physically implausible pose with no error from Motive/NatNet itself.
+
+
+def _check_up_axis_plausible(host, pose):
+    """Prints a warning (does not alter the pose or treat the robot as untracked -- see
+    cfg.UP_AXIS_PLAUSIBLE_RANGE_M's comment) if this robot's raw up-axis reading falls
+    outside the configured plausible floor-height band. Deliberately warns every
+    occurrence rather than once-per-host (unlike _heading_offset_for()'s missing-config
+    warning): this is a live, potentially transient tracking-quality signal (a robot can
+    become briefly mistracked and then recover), not a static one-time config gap, so
+    seeing it stop is as informative as seeing it start."""
+    lo, hi = cfg.UP_AXIS_PLAUSIBLE_RANGE_M
+    up_val = pose.position[_UP_AXIS_INDEX]
+    if not (lo <= up_val <= hi):
+        print(f"[pose_utils] WARNING: '{host}' up-axis (raw component {_UP_AXIS_INDEX}) "
+              f"reading {up_val:.3f}m is outside the plausible floor-height band "
+              f"[{lo}, {hi}]m -- this robot's rigid body may be solving against the "
+              f"wrong markers (stray reflection, unstable marker set, ceiling fixture) "
+              f"rather than tracking the real robot. Position/heading derived from this "
+              f"pose is likely garbage this tick.")
+
 
 def _heading_offset_for(host):
     """cfg.HEADING_OFFSET_RAD is per-robot (a dict), not one shared constant -- real
@@ -77,6 +102,7 @@ def poses_to_agents(poses, hostnames, self_hostname):
         if pose is None:
             agents[i] = [1e4, 1e4, 0.0, cfg.BATTERY_SENSOR_PLACEHOLDER]
             continue
+        _check_up_axis_plausible(host, pose)
         x, y = pose.position[ax0], pose.position[ax1]
         yaw = quaternion_to_yaw(*pose.orientation) * cfg.ROTATION_SIGN + _heading_offset_for(host)
         agents[i] = [x, y, _wrap_to_pi(yaw), cfg.BATTERY_SENSOR_PLACEHOLDER]

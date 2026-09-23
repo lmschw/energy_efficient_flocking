@@ -157,6 +157,25 @@ ROTATION_SIGN = 1.0
 # from where it should be heading), flip this -- it multiplies the angular-rate output
 # before conversion to left/right wheel targets in motor_utils.py.
 
+UP_AXIS_PLAUSIBLE_RANGE_M = (-0.5, 0.5)
+# Sanity band for the raw "up" axis (whichever raw component POSITION_AXES excludes --
+# raw_y on this confirmed Y-up rig) of any TRACKED robot -- pose_utils.poses_to_agents()
+# warns (does not discard/replace the pose) if a robot's up-axis reading falls outside
+# this band. Exists because a rigid body can silently solve against the wrong markers
+# (a stray reflection, a ceiling fixture, an unstable marker set) and keep reporting a
+# perfectly well-formed but physically implausible pose with no error from Motive/NatNet
+# -- confirmed on this rig: a "tracking_update" snapshot showed 2 robots reportedly
+# sitting ~20cm apart on the floor with raw_y=0.143 and raw_y=-0.341 (a robots-on-a-flat-
+# floor spread this config treats as normal -- hence the wide +/-0.5m band, not a tight
+# one), while a THIRD robot in the same line read raw_y=2.168 -- over 2 METERS higher,
+# with no plausible floor tilt/calibration-skew explanation for that from a 20cm run.
+# That third robot's rigid body was almost certainly not tracking the robot at all. This
+# band is deliberately generous (catches gross, multi-meter-scale failures like that one,
+# not precision floor-height deviations) -- tighten it once you've confirmed what a
+# genuinely stable, correctly-tracked floor reading looks like for your current Motive
+# session, since the coordinate origin/ground-plane calibration (and therefore what
+# "near zero" even means) is not guaranteed to match between sessions.
+
 # =====================================================================================
 # --- Corridor wall safety (deployment-only -- NOT a trained genome behavior) ---------
 # =====================================================================================
