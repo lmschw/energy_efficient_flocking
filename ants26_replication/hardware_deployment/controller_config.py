@@ -187,6 +187,36 @@ UP_AXIS_OUTLIER_THRESHOLD_M = 0.8
 # compare against), so this is defense-in-depth on top of, not a replacement for,
 # actually locating and removing/covering any stray reflective object you can find.
 
+STALE_POSE_TICK_THRESHOLD = 3
+# ADDED (2026-09-23): the up-axis fix above and the corridor fix before it were both real
+# improvements (real trial data showed genuine changing x/y positions for much longer than
+# before), but a *different* failure mode showed up in the very next real trial
+# (aggregated_1905.csv): thymio-11's x, y, raw_x, raw_y, raw_z AND its four sensed
+# quadrant distances were bit-for-bit IDENTICAL across 11 straight ticks (~5.5s at
+# CONTROL_TICK_SECONDS=0.5) before the operator noticed it had stopped moving and pushed
+# it back into view to reacquire tracking. Real OptiTrack marker noise essentially never
+# reproduces the exact same float across many consecutive polls, so this wasn't "robot
+# genuinely decided v=0" -- it was the tracking feed itself silently freezing (the robot
+# dropping out of NatNet's frame stream without ever being reported as untracked; nothing
+# in optitrack_client.py/session daemon has a staleness/timestamp check -- see that TODO)
+# while the daemon kept re-serving its last known pose as if it were live. Since v is
+# fed FROM the (frozen) sensed neighbor/self positions, the Hebbian weights converge on
+# that constant input and v settles near 0 -- i.e. this reproduces the exact same
+# "spin in place, no forward progress" symptom as the other two bugs, for a third,
+# unrelated reason.
+#
+# pose_utils._find_stale_poses() treats a robot's raw position repeating bit-for-bit for
+# this many CONSECUTIVE ticks (including the current one) as a frozen/stale feed rather
+# than a genuinely still robot, and rejects it the same way as "no pose at all" (same
+# sentinel fallback as the up-axis check). 3 tolerates a single coincidental exact repeat
+# (possible if a robot is truly stationary and OptiTrack's solver happens to reproduce
+# the same float twice) while still catching a genuine freeze within ~1 second of it
+# starting, well before the 11-tick freeze actually observed. This is a heuristic, not a
+# real timestamp check -- a proper fix would thread NatNet's own per-frame `timing`
+# argument (currently received and discarded in optitrack_client.py's _callback) through
+# the daemon relay so staleness could be measured directly; not done here since that
+# spans both repos and this local check already catches the failure mode observed.
+
 # =====================================================================================
 # --- Corridor wall safety (deployment-only -- NOT a trained genome behavior) ---------
 # =====================================================================================

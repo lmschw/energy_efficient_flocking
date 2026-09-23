@@ -71,6 +71,15 @@ async def main():
     print("\nRunning 5 ticks (no real asyncio.sleep delay, just exercising _tick()):")
     for i in range(5):
         print(f"tick {i}:")
+        # Perturb every robot's position by a tiny, tick-varying amount each iteration --
+        # real OptiTrack marker noise never reproduces the exact same float across many
+        # consecutive polls, so holding these perfectly static would (correctly) trip
+        # pose_utils' STALE_POSE_TICK_THRESHOLD staleness filter after a few ticks,
+        # which would silently turn this into a no-neighbors test instead of the
+        # triangle-of-3-real-neighbors scenario this loop is meant to exercise.
+        robot.poses = {h: Pose(position=(p.position[0] + 1e-4 * i, p.position[1] - 1e-4 * i, p.position[2]),
+                                orientation=p.orientation)
+                       for h, p in poses.items()}
         v, w, left, right = await experiment._tick()
         print(f"  -> v={v:.4f} m/s, w={w:.4f} rad/s")
         assert abs(v) <= cfg.LINEAR_VEL_MAX + 1e-9, "v exceeded LINEAR_VEL_MAX"
@@ -100,6 +109,12 @@ async def main():
         for i in range(5):
             x, y, z = robot3.poses["robot-a"].position
             robot3.poses["robot-a"] = Pose(position=(x - 0.02, y, z), orientation=(0.0, 0.0, 0.0, 1.0))
+            # robot-b/robot-c aren't the focus of this test but would otherwise sit
+            # perfectly static for 5 ticks and trip the staleness filter -- see the
+            # comment on the same pattern in the first loop above.
+            for h in ("robot-b", "robot-c"):
+                bx, by, bz = poses3[h].position
+                robot3.poses[h] = Pose(position=(bx + 1e-4 * i, by - 1e-4 * i, bz), orientation=poses3[h].orientation)
             v, w, left, right = await experiment3._tick()
             battery_trace.append(experiment3.battery)
             print(f"  tick {i}: v={v:.4f} w={w:.4f} battery={experiment3.battery:.4f}")

@@ -85,6 +85,46 @@ def _find_up_axis_outliers(poses, hostnames):
     return outliers
 
 
+_last_raw_position = {}  # hostname -> last seen raw (x, y, z) tuple, across ticks
+_stale_streak = {}       # hostname -> count of consecutive ticks with that same value
+
+
+def _find_stale_poses(poses, hostnames):
+    """Returns the set of hostnames whose raw position has repeated bit-for-bit for
+    STALE_POSE_TICK_THRESHOLD or more consecutive ticks -- see that constant's comment
+    in controller_config.py for the real trial data (aggregated_1905.csv) that motivated
+    this: a robot's tracking can silently freeze (drop out of NatNet's frame stream
+    without ever being reported as untracked) while the daemon keeps re-serving its last
+    known pose as if it were current. Real marker noise essentially never reproduces the
+    exact same float across many consecutive polls, so an exact repeat streak this long
+    is treated as a frozen feed, not a genuinely stationary robot. Maintains per-hostname
+    state across calls (one call per control tick), unlike _find_up_axis_outliers which
+    only looks within a single tick."""
+    stale = set()
+    for host in hostnames:
+        pose = poses.get(host)
+        if pose is None:
+            _last_raw_position.pop(host, None)
+            _stale_streak.pop(host, None)
+            continue
+        raw = tuple(pose.position)
+        if _last_raw_position.get(host) == raw:
+            _stale_streak[host] = _stale_streak.get(host, 1) + 1
+        else:
+            _stale_streak[host] = 1
+        _last_raw_position[host] = raw
+        if _stale_streak[host] >= cfg.STALE_POSE_TICK_THRESHOLD:
+            stale.add(host)
+            print(f"[pose_utils] WARNING: '{host}' raw position {raw} has been "
+                  f"bit-for-bit identical for {_stale_streak[host]} consecutive ticks "
+                  f"(>= STALE_POSE_TICK_THRESHOLD={cfg.STALE_POSE_TICK_THRESHOLD}). "
+                  f"Tracking for this robot has likely frozen (dropped out of NatNet's "
+                  f"frame stream without being reported as untracked) rather than the "
+                  f"robot genuinely holding still. Treating '{host}' as UNTRACKED this "
+                  f"tick instead of acting on this stale pose.")
+    return stale
+
+
 def _heading_offset_for(host):
     """cfg.HEADING_OFFSET_RAD is per-robot (a dict), not one shared constant -- real
     robots have disagreed by more than measurement noise would explain (see that
@@ -113,16 +153,17 @@ def poses_to_agents(poses, hostnames, self_hostname):
     self_index is hostnames.index(self_hostname), i.e. which row is "this robot" (needed
     by hebbian_swarm_experiment.py to pick out this robot's own sensor row afterward).
 
-    A robot with no current pose (not yet tracked, outside the mocap volume, or whose
+    A robot with no current pose (not yet tracked, outside the mocap volume, whose
     reading was just flagged as an up-axis outlier against this tick's other tracked
-    robots -- see _find_up_axis_outliers()) is placed far away rather than at (0, 0) --
-    so it reads as "no neighbor there" to sensor_model's range cutoff instead of being
-    mistaken for a real, very-close robot.
+    robots -- see _find_up_axis_outliers() -- or whose raw position has frozen for
+    several consecutive ticks -- see _find_stale_poses()) is placed far away rather than
+    at (0, 0) -- so it reads as "no neighbor there" to sensor_model's range cutoff
+    instead of being mistaken for a real, very-close robot.
     """
     ax0, ax1 = cfg.POSITION_AXES
     agents = np.zeros((len(hostnames), 4))
     self_index = hostnames.index(self_hostname)
-    outlier_hosts = _find_up_axis_outliers(poses, hostnames)
+    outlier_hosts = _find_up_axis_outliers(poses, hostnames) | _find_stale_poses(poses, hostnames)
     for i, host in enumerate(hostnames):
         pose = poses.get(host)
         if pose is None or host in outlier_hosts:
