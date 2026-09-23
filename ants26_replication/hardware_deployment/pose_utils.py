@@ -38,38 +38,51 @@ _warned_missing_offset_hosts = set()  # module-level: print the fallback warning
 
 _UP_AXIS_INDEX = ({0, 1, 2} - set(cfg.POSITION_AXES)).pop()
 # The one raw position component POSITION_AXES doesn't use for the ground plane -- see
-# cfg.UP_AXIS_PLAUSIBLE_RANGE_M's comment for why this is worth checking at all: a rigid
-# body can solve against the wrong markers and keep reporting a well-formed but
+# cfg.UP_AXIS_OUTLIER_THRESHOLD_M's comment for why this is worth checking at all: a
+# rigid body can solve against the wrong markers and keep reporting a well-formed but
 # physically implausible pose with no error from Motive/NatNet itself.
 
 
-def _up_axis_plausible(host, pose):
-    """Returns False (and prints a warning) if this robot's raw up-axis reading falls
-    outside the configured plausible floor-height band -- see
-    cfg.UP_AXIS_PLAUSIBLE_RANGE_M's comment for why this is worth checking at all
-    (confirmed on this rig: a stray reflective object sitting stationary well above
-    floor height silently "stole" the rigid-body identity of SIX different robots in
-    turn over one ~30s window, each reporting a perfectly well-formed but physically
-    impossible pose with no error from Motive/NatNet). The caller treats a False result
-    exactly like "no pose at all" (see poses_to_agents()) -- rejecting the reading
-    outright rather than acting on it, since there's no way to tell a genuinely bad
-    x/y/heading apart from a coincidentally plausible-looking one once the rigid body
-    has locked onto the wrong object. Deliberately warns every occurrence rather than
-    once-per-host (unlike _heading_offset_for()'s missing-config warning): this is a
-    live, potentially transient tracking-quality signal (a robot can become briefly
-    mistracked and then recover), not a static one-time config gap, so seeing it stop
-    is as informative as seeing it start."""
-    lo, hi = cfg.UP_AXIS_PLAUSIBLE_RANGE_M
-    up_val = pose.position[_UP_AXIS_INDEX]
-    if lo <= up_val <= hi:
-        return True
-    print(f"[pose_utils] WARNING: '{host}' up-axis (raw component {_UP_AXIS_INDEX}) "
-          f"reading {up_val:.3f}m is outside the plausible floor-height band "
-          f"[{lo}, {hi}]m -- this robot's rigid body may be solving against the "
-          f"wrong markers (stray reflection, unstable marker set, ceiling fixture) "
-          f"rather than tracking the real robot. Treating '{host}' as UNTRACKED this "
-          f"tick instead of acting on this pose.")
-    return False
+def _find_up_axis_outliers(poses, hostnames):
+    """Returns the set of hostnames whose raw up-axis reading is a clear outlier
+    relative to the OTHER currently-tracked robots this tick -- NOT compared against
+    any fixed absolute band. An earlier version of this check used a hardcoded
+    plausible-height band (e.g. -0.5 to 0.5m); that broke on the very next session,
+    because the ground-plane/origin calibration is NOT guaranteed to match between
+    sessions (documented, then immediately violated by hardcoding numbers from one
+    session as if they were universal) -- confirmed the hard way: an entire real trial
+    had every robot's genuinely correct up-axis reading fall outside that band, so
+    poses_to_agents() silently treated every robot as permanently self-blind for the
+    whole run, reproducing the exact "no neighbors, spin in place" symptom this was
+    meant to prevent -- a real bug in the earlier fix, not a hardware issue. Comparing
+    against the CURRENT session's own peer robots instead needs no a-priori knowledge
+    of what "correct" looks like this session; confirmed session-to-session that
+    legitimate cross-robot spread stays under ~0.5m while a genuine bad track (a stray
+    reflective object at ~2m up stealing 6 robots' identities in turn; a persistently
+    mistracked robot reading ~1.2m+ off its peers) is comfortably larger --
+    UP_AXIS_OUTLIER_THRESHOLD_M sits between those two regimes. Needs >=2 real poses
+    this tick to have any peer to compare against; with 0 or 1, returns no outliers
+    (nothing to detect an outlier against)."""
+    up_vals = {host: poses[host].position[_UP_AXIS_INDEX]
+               for host in hostnames if poses.get(host) is not None}
+    if len(up_vals) < 2:
+        return set()
+    median = float(np.median(list(up_vals.values())))
+    threshold = cfg.UP_AXIS_OUTLIER_THRESHOLD_M
+    outliers = set()
+    for host, up_val in up_vals.items():
+        deviation = abs(up_val - median)
+        if deviation > threshold:
+            outliers.add(host)
+            print(f"[pose_utils] WARNING: '{host}' up-axis (raw component "
+                  f"{_UP_AXIS_INDEX}) reading {up_val:.3f}m deviates {deviation:.3f}m "
+                  f"from this tick's peer median ({median:.3f}m, {len(up_vals)} robots) "
+                  f"-- past UP_AXIS_OUTLIER_THRESHOLD_M ({threshold}m). This robot's "
+                  f"rigid body may be solving against the wrong markers (stray "
+                  f"reflection, unstable marker set, ceiling fixture) rather than "
+                  f"tracking the real robot. Treating '{host}' as UNTRACKED this tick "
+                  f"instead of acting on this pose.")
+    return outliers
 
 
 def _heading_offset_for(host):
@@ -101,16 +114,18 @@ def poses_to_agents(poses, hostnames, self_hostname):
     by hebbian_swarm_experiment.py to pick out this robot's own sensor row afterward).
 
     A robot with no current pose (not yet tracked, outside the mocap volume, or whose
-    reading just failed the up-axis plausibility check -- see _up_axis_plausible()) is
-    placed far away rather than at (0, 0) -- so it reads as "no neighbor there" to
-    sensor_model's range cutoff instead of being mistaken for a real, very-close robot.
+    reading was just flagged as an up-axis outlier against this tick's other tracked
+    robots -- see _find_up_axis_outliers()) is placed far away rather than at (0, 0) --
+    so it reads as "no neighbor there" to sensor_model's range cutoff instead of being
+    mistaken for a real, very-close robot.
     """
     ax0, ax1 = cfg.POSITION_AXES
     agents = np.zeros((len(hostnames), 4))
     self_index = hostnames.index(self_hostname)
+    outlier_hosts = _find_up_axis_outliers(poses, hostnames)
     for i, host in enumerate(hostnames):
         pose = poses.get(host)
-        if pose is None or not _up_axis_plausible(host, pose):
+        if pose is None or host in outlier_hosts:
             agents[i] = [1e4, 1e4, 0.0, cfg.BATTERY_SENSOR_PLACEHOLDER]
             continue
         x, y = pose.position[ax0], pose.position[ax1]

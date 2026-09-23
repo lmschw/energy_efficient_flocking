@@ -157,34 +157,35 @@ ROTATION_SIGN = 1.0
 # from where it should be heading), flip this -- it multiplies the angular-rate output
 # before conversion to left/right wheel targets in motor_utils.py.
 
-UP_AXIS_PLAUSIBLE_RANGE_M = (-0.5, 0.5)
-# Sanity band for the raw "up" axis (whichever raw component POSITION_AXES excludes --
-# raw_y on this confirmed Y-up rig) of any TRACKED robot. pose_utils.poses_to_agents()
-# REJECTS a robot's reading outright (treats it exactly like "no pose at all" -- the
-# (1e4, 1e4) untracked sentinel, not a discarded-but-otherwise-used value) if its up-axis
-# falls outside this band, rather than merely warning and still acting on it -- there is
-# no way to tell a genuinely bad x/y/heading apart from a coincidentally plausible-
-# looking one once a rigid body has locked onto the wrong object, so partial trust isn't
-# an option here. Exists because a rigid body can silently solve against the wrong
-# markers (a stray reflection, a ceiling fixture, an unstable marker set) and keep
-# reporting a perfectly well-formed but physically implausible pose with no error from
-# Motive/NatNet -- confirmed on this rig, and not a one-off: a single stray object
-# sitting stationary near raw_y=2.2m (roughly ceiling height, nowhere near where a robot
-# sits) "stole" the rigid-body identity of SIX different robots in turn over one ~30s
-# window, each reporting a perfectly well-formed pose within 5cm of the SAME physical
-# point instead of its own real one. A separate legitimate "tracking_update" snapshot
-# showed 2 robots genuinely sitting ~20cm apart on the floor with raw_y=0.143 and
-# raw_y=-0.341 (a robots-on-a-flat-floor spread this config treats as normal -- hence the
-# wide +/-0.5m band, not a tight one). This band is deliberately generous (catches gross,
-# multi-meter-scale failures like the ghost-object case, not precision floor-height
-# deviations) -- tighten it once you've confirmed what a genuinely stable, correctly-
-# tracked floor reading looks like for your current Motive session, since the coordinate
-# origin/ground-plane calibration (and therefore what "near zero" even means) is not
-# guaranteed to match between sessions. If you can locate and physically remove/cover the
-# stray reflective object, this filter becomes pure defense-in-depth rather than the only
-# thing standing between the controller and garbage position data -- worth still keeping
-# either way, since a real robot rigid body losing lock some other way is exactly the
-# same failure mode.
+UP_AXIS_OUTLIER_THRESHOLD_M = 0.8
+# REPLACED (2026-09-23) an earlier hardcoded ABSOLUTE plausible-height band (e.g.
+# -0.5 to 0.5m) after it broke on the very next real session: that band was calibrated
+# from one session's example numbers (good robots reading ~0.143/-0.341) and trusted as
+# if it were universal, despite this very file's own prior comment admitting the
+# coordinate origin/ground-plane calibration isn't guaranteed to match between sessions.
+# Confirmed the hard way: a later real trial had EVERY robot's genuinely correct up-axis
+# reading (around -0.57 to -1.03) fall outside that old band, so poses_to_agents()
+# silently treated every robot as permanently self-blind for the entire run --
+# reproducing the exact "no neighbors detected, spin in place, no forward progress"
+# symptom this check exists to prevent. Worse, that session's legitimate ~-1.0m reading
+# overlaps almost exactly with a DIFFERENT session's confirmed-bad ghost-object reading
+# -- an absolute band genuinely cannot tell them apart across sessions.
+#
+# Now RELATIVE instead: pose_utils._find_up_axis_outliers() compares each tracked
+# robot's up-axis reading against the MEDIAN of the other robots tracked THIS SAME TICK,
+# flagging (and rejecting, same as "no pose at all") one that deviates by more than this
+# threshold -- no a-priori knowledge of "what near-zero means this session" required.
+# Value chosen from the two confirmed real cases so far: legitimate cross-robot spread
+# within a single session has stayed under ~0.5m (both the 0.143/-0.341 pair and the
+# -0.57/-1.03 pair from two different sessions); genuine bad tracks have been either a
+# stray object ~1.8-2.0m off real robots' shared height, or a persistently mistracked
+# robot ~1.2m+ off its peers. 0.8m sits comfortably between those two regimes given the
+# data seen so far -- but this is still a heuristic from a small number of observed
+# cases, not a physically derived constant; retune if either regime turns out to
+# overlap it in practice. Needs >=2 currently-tracked robots to have a peer to compare
+# against -- with 0 or 1 tracked this tick, no outliers can be detected (nothing to
+# compare against), so this is defense-in-depth on top of, not a replacement for,
+# actually locating and removing/covering any stray reflective object you can find.
 
 # =====================================================================================
 # --- Corridor wall safety (deployment-only -- NOT a trained genome behavior) ---------
