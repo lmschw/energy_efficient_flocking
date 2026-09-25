@@ -58,21 +58,30 @@ def fitness_wrapper(genome):
     rules = unflatten_abcd(genome)
     wind_enabled = config.HEBBIAN_STAGE_WIND_ENABLED[active_stage]
 
-    effs = []
-    for r in range(active_n_repeats):
-        seed = active_seed_base + current_candidate * 1000 + r  # distinct seed per repeat, per candidate
-        try:
-            dist, batt, ct, wct, coh, prox = simulate_hebbian_episode(
-                rules, seed=seed, n_agents=active_n_agents, wind_enabled=wind_enabled,
-                max_battery=active_max_battery, min_battery=active_min_battery,
-                nx=active_nx, ny=active_ny, use_battery_sensor=active_use_battery_sensor)
-            effs.append(stage_fitness(dist, batt, ct, wct, coh, prox, active_stage))
-        except Exception as e:
-            print(f"\n⚠️  Candidate {current_candidate} repeat {r} failed "
-                  f"({type(e).__name__}: {e}) -- treating as worst-case for this repeat")
-            effs.append(-99999.0)
+    # active_n_agents may be a list of swarm sizes (mixed-n training): fitness is then the MEAN
+    # over sizes of each size's median-over-repeats efficiency. Mean, not median, so a failure
+    # at one size (e.g. circling at n=1) can't be outvoted by the others. A single int behaves
+    # exactly as before (same seeds, same median).
+    n_list = active_n_agents if isinstance(active_n_agents, (list, tuple)) else [active_n_agents]
+    per_n_effs = []
+    for k, n_agents in enumerate(n_list):
+        effs = []
+        for r in range(active_n_repeats):
+            # distinct seed per repeat, per candidate (and per swarm size in mixed-n mode)
+            seed = active_seed_base + current_candidate * 1000 + k * 100 + r
+            try:
+                dist, batt, ct, wct, coh, prox = simulate_hebbian_episode(
+                    rules, seed=seed, n_agents=n_agents, wind_enabled=wind_enabled,
+                    max_battery=active_max_battery, min_battery=active_min_battery,
+                    nx=active_nx, ny=active_ny, use_battery_sensor=active_use_battery_sensor)
+                effs.append(stage_fitness(dist, batt, ct, wct, coh, prox, active_stage))
+            except Exception as e:
+                print(f"\n⚠️  Candidate {current_candidate} n={n_agents} repeat {r} failed "
+                      f"({type(e).__name__}: {e}) -- treating as worst-case for this repeat")
+                effs.append(-99999.0)
+        per_n_effs.append(np.median(effs))
 
-    return -float(np.median(effs))  # CMA-ES minimizes
+    return -float(np.mean(per_n_effs))  # CMA-ES minimizes
 
 
 def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_base, output_dir,
@@ -130,7 +139,8 @@ def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_ba
                    # would misrepresent this genome's behavior if it differs (n_agents
                    # especially -- flocking dynamics are visibly agent-count-sensitive).
                    "n_agents": n_agents, "max_battery": max_battery, "min_battery": min_battery,
-                   "wind_grid_nx": nx, "wind_grid_ny": ny}, f, indent=2)
+                   "wind_grid_nx": nx, "wind_grid_ny": ny,
+                   "empty_quadrant_zero": config.HEBBIAN_EMPTY_QUADRANT_ZERO}, f, indent=2)
 
     print(f"💾 Stage '{stage}' complete. Best efficiency: {-best_loss:.4f}. Saved {genome_name}")
     return best_genome

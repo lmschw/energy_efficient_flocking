@@ -37,7 +37,12 @@ from optimize_hebbian import run_stage
 from fitness_plot import FitnessPlotter
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--n-agents", type=int, default=10)
+parser.add_argument("--n-agents", type=int, nargs="+", default=[10],
+                    help="Swarm size. Several values (e.g. 1 5 10 15 20) = mixed-n training: each "
+                         "candidate is evaluated at every size, fitness = mean over sizes.")
+parser.add_argument("--empty-quadrant-zero", action="store_true",
+                    help="Encode an empty sensor quadrant as (0, 0) instead of (+1, -1) -- see "
+                         "config.HEBBIAN_EMPTY_QUADRANT_ZERO.")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--wind-grid", type=int, default=50)
 parser.add_argument("--popsize", type=int, default=config.HEBBIAN_CMAES_POPSIZE)
@@ -46,11 +51,15 @@ parser.add_argument("--maxiter-stage2", type=int, default=2 * config.HEBBIAN_CMA
 parser.add_argument("--n-repeats", type=int, default=config.HEBBIAN_N_REPEATS)
 parser.add_argument("--output-dir", default="../../results/hebbian_results_v2_2stage_upwind/n10_seed42")
 args = parser.parse_args()
+if len(args.n_agents) == 1:
+    args.n_agents = args.n_agents[0]
+config.HEBBIAN_EMPTY_QUADRANT_ZERO = args.empty_quadrant_zero
 
 os.makedirs(args.output_dir, exist_ok=True)
 print(f"2-stage curriculum: walk_upwind ({args.maxiter_stage1} gen) -> "
       f"save_battery_avoid_all ({args.maxiter_stage2} gen, doubled). "
       f"Clamp/inflation/resolve/instant-death OFF. n_agents={args.n_agents} seed={args.seed} "
+      f"empty_quadrant_zero={config.HEBBIAN_EMPTY_QUADRANT_ZERO} "
       f"wind_grid={args.wind_grid}. Output: {args.output_dir}")
 
 np.random.seed(args.seed)

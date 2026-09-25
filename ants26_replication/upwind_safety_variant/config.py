@@ -355,6 +355,13 @@ HEBBIAN_DEFAULT_SEED = 42
 # --- Robot & sensing (Section 2.1) ---
 HEBBIAN_N_AGENTS = 20             # swarm size used throughout the paper's experiments
 HEBBIAN_SENSING_RADIUS = 2.01     # R: neighbor detection radius [m]; also the "no neighbor" default distance
+# If True, an EMPTY quadrant feeds (0, 0) for its (distance, bearing) inputs instead of the
+# MATLAB-default (+1, -1) (distance=R, bearing=0 after rescaling). A lone agent otherwise sees
+# a large constant input vector [1,-1,1,-1,1,-1,1,-1,...] that it never meets in n=20 training,
+# which drove plain_seed123 into a saturated full-rate turn (circling) at n=1. Default False so
+# every existing genome keeps the encoding it was trained on; a genome trained with this ON must
+# also be deployed with it ON.
+HEBBIAN_EMPTY_QUADRANT_ZERO = False
 HEBBIAN_LINEAR_VEL_MAX = 0.2      # m/s, tanh output #1 rescaled to [-this, this]
 HEBBIAN_ANGULAR_VEL_MAX = math.pi / 5  # rad/s, tanh output #2 rescaled to [-this, this]
 

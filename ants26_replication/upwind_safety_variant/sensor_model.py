@@ -55,12 +55,12 @@ def get_sensor_data(agents, sensing_radius=None):
         found = np.isfinite(masked_dist[np.arange(n_agents), nearest_idx])
         dist_out = np.where(found, masked_dist[np.arange(n_agents), nearest_idx], sensing_radius)
         bearing_out = np.where(found, bearing_all[np.arange(n_agents), nearest_idx], 0.0)
-        return dist_out, bearing_out
+        return dist_out, bearing_out, found
 
-    front_d, front_b = _nearest(front_mask, front_bearing_all)
-    back_d, back_b = _nearest(back_mask, back_bearing_all)
-    right_d, right_b = _nearest(right_mask, right_bearing_all)
-    left_d, left_b = _nearest(left_mask, left_bearing_all)
+    front_d, front_b, front_f = _nearest(front_mask, front_bearing_all)
+    back_d, back_b, back_f = _nearest(back_mask, back_bearing_all)
+    right_d, right_b, right_f = _nearest(right_mask, right_bearing_all)
+    left_d, left_b, left_f = _nearest(left_mask, left_bearing_all)
 
     inputs = np.stack([
         front_d * 2.0 / sensing_radius - 1.0, front_b * 4.0 / np.pi - 1.0,
@@ -70,4 +70,8 @@ def get_sensor_data(agents, sensing_radius=None):
         agents[:, 3] / 50.0 - 1.0,
         agents[:, 2] / np.pi,
     ], axis=0)  # (10, n_agents)
+    if config.HEBBIAN_EMPTY_QUADRANT_ZERO:
+        # See config.HEBBIAN_EMPTY_QUADRANT_ZERO: empty quadrant -> (0, 0) instead of (+1, -1).
+        for row, found in ((0, front_f), (2, back_f), (4, right_f), (6, left_f)):
+            inputs[row:row + 2, ~found] = 0.0
     return inputs

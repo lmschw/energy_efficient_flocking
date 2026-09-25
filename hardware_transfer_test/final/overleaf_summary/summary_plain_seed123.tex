@@ -209,18 +209,28 @@ rate is more fragile than the raw distance figure alone would suggest.
 
 \subsection{Comparison across swarm sizes}
 \label{sec:nsweep}
-\textbf{The reliable win is specific to $n_{\text{agents}}=20$.} A 30-seed sweep down to
-$n_{\text{agents}}\in\{1,2,3,4,5,7,10\}$ found \emph{zero} seeds, for either variant, where
-distance and battery both exceeded the LJ baseline at that same swarm size -- only at $n{=}20$
-does either genome win reliably (Table~\ref{tab:headline}). This directly bounds what any
-hardware trial with fewer robots can be expected to demonstrate (\S\ref{sec:hardware}).
+\textbf{The win over the baseline only emerges at large swarm sizes.} A 30-seed sweep over
+every $n_{\text{agents}}\in\{1,\dots,20\}$ found \emph{zero} seeds, for either variant, where
+distance and battery both exceeded the LJ baseline at that same swarm size for any
+$n_{\text{agents}}\leq12$. Above that the both-beat rate climbs gradually rather than
+switching on at $n{=}20$: unclamped 2/30 at $n{=}13$, 11/30 at $n{=}15$, 15/30 at $n{=}16$--18,
+20/30 at $n{=}19$, 23/30 at $n{=}20$; clamped first at $n{=}14$ (1/30), then 9--12/30 from
+$n{=}16$ onward. (Here ``both-beat'' is paired per seed -- each genome run against the
+baseline run on the \emph{same} spawn seed -- whereas Table~\ref{tab:headline} counts seeds
+beating the baseline's 30-seed \emph{mean}; hence 23/30 and 10/30 here vs.\ 25/30 and 5/30
+there at $n{=}20$.) The crossover is driven mainly by the baseline: its distance is flat
+($\approx$25\,m) through $n{=}8$ and falls steadily from $n{=}9$, while the unclamped genome's
+distance rises and overtakes it at $n{=}12$ (the clamped genome, flat at $\approx$14\,m,
+overtakes at $n{=}14$). This directly bounds what any hardware trial with fewer robots can be
+expected to demonstrate (\S\ref{sec:hardware}).
 
 \begin{figure}[h]
 \centering
 \includegraphics[width=\textwidth]{figures/n_agents_sweep_distance_battery_plain_seed123}
-\caption{Distance and battery vs.\ swarm size, mean $\pm$ 1 std over 30 seeds. The LJ
-baseline's distance is roughly flat through $n{=}7$ and only collapses toward $n{=}10$--$20$;
-both genome variants climb steadily and only cross over near the top of the range.}
+\caption{Distance and battery vs.\ swarm size ($n{=}1$--20), mean $\pm$ 1 std over 30
+seeds. The LJ baseline's distance is flat through $n{=}8$ and falls steadily from $n{=}9$;
+the unclamped genome climbs and overtakes it at $n{=}12$, the clamped genome (flat at
+$\approx$14\,m) at $n{=}14$.}
 \end{figure}
 
 \begin{figure}[h]
