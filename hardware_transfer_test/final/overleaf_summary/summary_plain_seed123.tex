@@ -114,6 +114,189 @@ commanded collision. The episode ends when any robot's battery is empty.}
 \label{fig:step-loop}
 \end{figure}
 
+\subsection{Simulator}
+\label{sec:simulator}
+All training and evaluation runs in a custom 2D kinematic simulator written in Python -- a
+port of the MATLAB reference code released with \cite{mahdavi2026}
+(\texttt{simulation\_free\_global\_mod\_2.m}, \texttt{RayTraceCircularRobots.m},
+\texttt{hebbianStep.m}), with the deviations listed at the end of this subsection. Time
+advances in fixed steps of $\Delta t = 0.5$\,s. Within a step every robot senses the same
+snapshot of the swarm and all robots move together, in the order of
+Fig.~\ref{fig:step-loop}. There is no rigid-body dynamics: no inertia, no wheel slip and no
+contact forces.
+
+\paragraph{Robots and motion.} Each robot $i$ is a disc of radius $r = 0.055$\,m (Thymio
+sized) with state $(x_i, y_i, \theta_i, b_i)$: position, heading and battery. The controller
+outputs a forward speed $v_i \in [-0.2, 0.2]$\,m/s (reversing is allowed) and a turn rate
+$\omega_i \in [-\pi/5, \pi/5]$\,rad/s, and the robot moves as a unicycle,
+\begin{equation}
+x_i \leftarrow x_i - v_i \sin\theta_i\,\Delta t, \qquad
+y_i \leftarrow y_i + v_i \cos\theta_i\,\Delta t, \qquad
+\theta_i \leftarrow \operatorname{wrap}_{[-\pi,\pi)}(\theta_i + \omega_i\,\Delta t),
+\end{equation}
+so $\theta = 0$ faces $+y$ and $\theta = \pi/2$ faces $-x$, i.e.\ upwind.
+
+\paragraph{Arena.} The arena is a corridor. Side walls at $y = \pm 5$\,m clip robot centres to
+$|y| \le 5 - r$. Along $x$ there is no end: every step the 10\,m-wide simulation window is
+re-centred on the swarm, so the swarm can travel upwind for as long as its batteries last.
+There are two edge cases along $x$. A robot that falls more than 9.8\,m downwind of the
+furthest-upwind robot is pulled along with the window. Crossing $x = +4.92$\,m (the
+downwind edge of the initial 10\,m arena) counts as wall contact in the collision bookkeeping
+below, but does not stop the robot. Robots spawn uniformly at random in a
+$3\times3$\,m square centred on the origin, with random headings and at least $2r + 0.1 =
+0.21$\,m between centres (positions are redrawn until this holds). Every battery starts full,
+at $b = 100$.
+
+\paragraph{Sensing.} Each robot divides its surroundings into four $90^\circ$ quadrants
+centred on its own front, left, back and right, and senses only the nearest neighbour in each
+quadrant within $R = 2.01$\,m (Fig.~\ref{fig:sensing-wind}a). For that neighbour it gets the
+centre distance $d$ and the bearing $\beta \in [0, \pi/2]$ measured from the quadrant's
+clockwise edge, rescaled to $2d/R - 1$ and $4\beta/\pi - 1$. An empty quadrant reads as
+$d = R,\ \beta = 0$, i.e.\ $(+1, -1)$. Two further inputs complete the 10-dimensional input
+vector: the robot's own battery, $b/50 - 1$, and its absolute compass heading,
+$\theta/\pi$. Sensing is idealised -- noise-free, never occluded, always distinguishing
+individual neighbours -- which the hardware trial reproduces by computing the same inputs
+from OptiTrack poses rather than onboard sensors.
+
+\paragraph{Controller.} Every robot runs the Hebbian network of Fig.~\ref{fig:controller}:
+inputs $\to$ 10 ReLU $\to$ 10 ReLU $\to$ 2 $\tanh$, scaled to $(v_i, \omega_i)$. The network
+weights $W_1, W_2, W_3$ are drawn from $U[-1, 1]$ at the start of every episode, independently
+for each robot. Every step, after the forward pass, each weight changes by
+$\Delta w_{ij} = \eta(A_{ij} n_i n_j + B_{ij} n_i + C_{ij} n_j + D_{ij})$ with
+$\eta = 0.1$, where $n_i$ and $n_j$ are the activities of the neurons the weight connects.
+Any layer whose largest $|w|$ then exceeds 1 is rescaled so that it equals 1. Only the 880
+coefficients $(A, B, C, D)$ are evolved, and the whole swarm shares them.
+
+\paragraph{Wind.} Wind blows along $+x$ with free-stream power $U_\infty = 100$ (percent). The
+wind field is recomputed every step on a $50\times50$ grid over the current $10\times10$\,m
+window (cell size $\approx 0.2$\,m), following \texttt{RayTraceCircularRobots.m}. For the
+wind, each robot is an obstacle disc of radius $r_w = 0.15$\,m, larger than its body. The
+power $P$ is marched column by column downwind, independently for each grid row:
+\begin{itemize}
+\item entering a robot's disc, or passing directly from one robot's disc into another's:
+      $P \leftarrow \max(30,\ 0.75\,P)$;
+\item staying inside the same disc, or just leaving it: $P$ unchanged;
+\item in free space: $P \leftarrow \min\big(U_\infty,\ P + \lambda\,\Delta x\,(U_\infty - P)\big)$
+      with $\lambda = 1\,\text{m}^{-1}$, so a wake fills back in over roughly a metre.
+\end{itemize}
+The field is then smoothed with a normalised kernel $\propto e^{-0.5(|\Delta i| + |\Delta j|)}$
+(three cells across the wind), followed by a \emph{barrier} correction. A cell that lies
+$h$ cells inside a contiguous across-wind band of wake is deepened to
+$P \leftarrow \max\big(10,\ P\,(P/100)^{s}\big)$ with
+$s = 2\big[\tanh\big(3(2h\Delta y/0.7 - 1)\big) + 1\big]$. A single robot therefore casts
+only a shallow wake, but several robots side by side form a barrier that shelters the robots
+behind it much more deeply. A final $3\times3$ smoothing pass follows. Each robot reads its
+wind $U_i$ from the grid cell just upstream of it (at $x \le x_i - 1.1\,r_w$, in its own row),
+and $U_i = 100$ when it is at the upstream edge of the window.
+Fig.~\ref{fig:sensing-wind}b shows a field computed this way.
+
+\paragraph{Drag and battery.} Drag acts along $+x$ only:
+\begin{equation}
+F_i = \tfrac12\,\rho\,C_dA\,\kappa\,(u_i - \dot x_i)^2, \qquad u_i = \frac{U_i}{100}\,V_w,
+\end{equation}
+with $\rho = 1.225$\,kg/m$^3$, $C_dA = 0.0045$, $\kappa = 10$, $V_w = 10$, and $\dot x_i$ the
+robot's realised velocity along $x$. Battery drains every step as
+\begin{equation}
+\Delta b_i = 2\,\Delta t\cdot\max\!\Big(\underbrace{\tfrac14\big(|v_i - \omega_i r| + |v_i + \omega_i r|\big)}_{\text{wheel effort}}
+\;\underbrace{-\;\dot x_i F_i}_{\text{work against drag}},\ \ 0.1\Big),
+\end{equation}
+where $v_i$ is the realised speed after walls and collisions. The drag term is positive only
+when a robot moves upwind ($\dot x_i < 0$). Moving downwind cannot recharge a robot, because
+the drain never falls below the idle floor of $0.1$. Table~\ref{tab:drain} evaluates this for
+a single robot: shelter cuts the cost of moving upwind by more than $4\times$, which is the
+advantage the swarm can exploit. The episode ends as soon as \emph{any} robot's battery
+reaches zero, so the swarm is only as good as its weakest member.
+
+\begin{table}[h]
+\centering
+\caption{Battery drain for one robot, from the simulator's own drain function.}
+\label{tab:drain}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Situation & Drag $F_i$ [N] & Drain per step & Time to empty (from 100) \\
+\midrule
+Full wind ($U_i = 100$), moving upwind at 0.2\,m/s & 2.87 & 0.674 & 74\,s \\
+Sheltered ($U_i = 30$), moving upwind at 0.2\,m/s & 0.28 & 0.156 & 320\,s \\
+Full wind, standing still & 2.76 & 0.100 (floor) & 500\,s \\
+Full wind, moving downwind at 0.2\,m/s & 2.65 & 0.100 (floor) & 500\,s \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Collisions and walls.} Two robots collide when their centres are closer than
+$d_{\min} = 2r + 0.01 = 0.12$\,m. During clamped training this threshold is inflated
+$1.3\times$ to $0.156$\,m, so the controller learns to keep a margin. Each colliding pair adds
+$\Delta t$ to the collision time $t_{\text{coll}}$ for that step. A robot within $r/2$ of a
+side wall's limit, or past the downwind line above, adds $\Delta t$ to the wall-contact time
+$t_{\text{wall}}$. In the unclamped variant robots can pass through each other: collisions
+are only counted and penalised, never physically prevented. The clamped variant adds the
+forward-speed clamp before motion and the soft de-overlap push after the collision count
+(\S\ref{sec:clamp}), so the fitness penalty still sees every commanded collision.
+
+\paragraph{Episode outcome and fitness.} When the episode ends the simulator reports the
+distance $d = -\bar x$ that the swarm centroid has travelled upwind from the origin, and the
+mean remaining battery $\bar b$. The stage fitness (\S\ref{sec:curriculum},
+Fig.~\ref{fig:pipeline}) is $16\,d$ in stage~1 and
+$16\,d + \bar b/5 - (3\,t_{\text{wall}} + t_{\text{coll}})/250$ in stage~2. Standing still is
+cheap (Table~\ref{tab:drain}), so a fitness based on battery alone would reward doing
+nothing; the large distance weight $w_d = 16$ makes progress upwind dominate. CMA-ES
+($\lambda = 30$, $\sigma_0 = 0.3$, genome bounded to $[-5, 5]$) scores each candidate as the
+median fitness over 3 episodes. The spawn seed is $s_0 + 1000k + j$ for the $k$-th candidate
+of a generation and repeat $j$, with training seed $s_0 = 123$. The seed also fixes the
+initial network weights, so the $k$-th candidate of every generation faces the same three
+spawn layouts: 90 in total, none of which overlap the evaluation seeds 1000--1029.
+
+\paragraph{The LJ baseline.} The comparison baseline runs in the same simulator, with the same
+wind, drag, battery law, spawns and seeds, but replaces the network with the rule-based
+flocking law of \cite{mahdavi2026} (Table~3). Each robot sums a Lennard-Jones spacing force
+from all robots within 3\,m ($r_0 = 0.7$\,m, $\epsilon = 1$) and a constant pull upwind
+($k_{\text{goal}} = 3$; heading alignment is off, $k_{\text{align}} = 0$). The force is
+expressed in the robot's own frame and mapped to
+$v = \operatorname{clip}(0.05\,F_\parallel)$ and $\omega = \operatorname{clip}(0.5\,F_\perp)$,
+under the same speed limits as the network. Its parameters are fixed at the published
+values, and it sees more than the network: every robot within 3\,m rather than one per quadrant within 2.01\,m. It also keeps the
+LJ model's native battery scale of 150 units per robot instead of 100. Because the drain per
+step is the same absolute amount, LJ robots start with $1.5\times$ the energy. All battery
+figures report remaining charge as a percentage of each controller's own starting charge.
+
+\paragraph{Differences from the MATLAB reference.} (i) The reference never enforces the
+sensing radius $R$, so a distant robot could register as a quadrant's nearest neighbour; the
+port enforces $R$, as the paper describes. (ii) Initial network weights are drawn from
+$U[-1, 1]$ as the paper states; the reference draws $W_1$ from a normal distribution instead.
+(iii) The fitness adds the distance weight $w_d = 16$, which is not in the paper's Table~2,
+so that progress dominates battery saving. (iv) The soft de-overlap push, which exists but
+is commented out in the reference, is re-enabled for the clamped variant only.
+(v) The wind grid is $50\times50$, coarser than the code's $200\times200$ default, to cut
+simulation cost; all training and all evaluation reported here use $50\times50$.
+
+\begin{table}[h]
+\centering
+\caption{Simulator parameters used for all training and evaluation in this document.}
+\label{tab:sim-params}
+\begin{tabular}{@{}llr@{}}
+\toprule
+Group & Parameter & Value \\
+\midrule
+Time & step $\Delta t$ & 0.5\,s \\
+Robot & body radius $r$ / wind-obstacle radius $r_w$ & 0.055\,m / 0.15\,m \\
+ & speed limits $|v|$, $|\omega|$ & 0.2\,m/s, $\pi/5$\,rad/s \\
+ & starting battery (network / LJ) & 100 / 150 \\
+Arena & corridor width; window length & 10\,m; 10\,m (follows swarm) \\
+ & spawn square; min.\ spawn spacing & $3\times3$\,m; 0.21\,m \\
+Sensing & radius $R$; quadrants & 2.01\,m; 4 $\times$ $90^\circ$ \\
+Wind & grid; free-stream $U_\infty$; $V_w$ & $50\times50$; 100; 10 \\
+ & wake drop / floor; recovery $\lambda$ & 25\,\% / 30; 1\,m$^{-1}$ \\
+ & barrier floor; smoothing decay & 10; 0.5 \\
+Drag & $\rho$, $C_dA$, $\kappa$ & 1.225, 0.0045, 10 \\
+Battery & wheel divisor; idle floor; drain scale & 4; 0.1; 2 \\
+Collisions & $d_{\min}$ (clamped training: $\times1.3$) & 0.12\,m (0.156\,m) \\
+Controller & network; $\eta$; initial weights & 10--10--10--2; 0.1; $U[-1,1]$ \\
+Evolution & $\lambda$; $\sigma_0$; bounds; repeats & 30; 0.3; $[-5,5]$; 3 (median) \\
+ & generations (stage 1 / stage 2) & 100 / 200 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{The 2-stage \texttt{walk\_upwind} curriculum}
 \label{sec:curriculum}
 Both variants use a 2-stage curriculum -- \texttt{walk\_upwind} (100 generations, wind

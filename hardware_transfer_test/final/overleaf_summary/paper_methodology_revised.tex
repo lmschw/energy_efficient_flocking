@@ -1,0 +1,216 @@
+% =====================================================================================
+% Revised Methodology + simulator part of Experimental Setup for swarm_intelligence.tex
+% Changed or new text is RED. Removed text is simply gone (see the list in the chat).
+%
+% 1) Add to the preamble (xcolor is already loaded by todonotes):
+%      \newcommand{\rev}[1]{\textcolor{red}{#1}}
+% 2) Replace everything from "\section{Methodology}" down to and including the
+%    fig:wind figure (just before the fitness-evolution figure) with the text below.
+% =====================================================================================
+
+\section{Methodology}
+\label{sec:methodology}
+The methodology is heavily based on the framework presented in~\cite{vandiggelen2025emergentheterogeneousswarmcontrol}, whereby robots are equipped with neural controllers whose weights are updated by Hebbian learning rules, and a separate outer‑loop evolutionary optimizer is used to learn the Hebbian learning update rules. All evolutionary and simulated validation experiments are performed in a 2D kinematic Python simulator\rev{, a port of the MATLAB code of~\cite{mahdavi2026energy}}.
+The full workflow is depicted in Fig.~\ref{fig:ES_overview}.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=1\textwidth]{Images/Methodology/ES_layout.png}
+\caption{\textbf{Overview of the Methodology.}
+    Our setup comprises a swarm with robots, each equipped with a neural network controller. Each swarm shares one set of Hebbian learning rules, which are learned by the CMA-ES algorithm through evolution. The robots are simulated in the windy arena for fitness calculation.} \label{fig:ES_overview}
+\end{figure}
+
+\subsection{Individual Robot Neural Controller}
+We consider differential-drive ground robots, whose locomotion capabilities are regulated by forward velocity $v^i$ and angular velocity $\omega^i$.
+
+\begin{figure}[t]
+  \centering
+  \subfloat[Bearing\label{fig:bearing}]{
+    \begin{minipage}[t]{0.35\textwidth}
+       \centering
+      \includegraphics[width=0.7\linewidth]{Images/Methodology/quadrants.png}
+    \end{minipage}
+  }
+  \subfloat[Range\label{fig:range}]{
+    \begin{minipage}[t]{0.35\textwidth}
+      \centering
+      \includegraphics[width=0.7\linewidth]{Images/Methodology/quadrants_range.png}
+    \end{minipage}
+  }
+  \caption{Sensing capabilities of the individual robots.}
+  \label{fig:quadrants}
+\end{figure}
+
+The perception capabilities of the robots are as follows: Every robot can perceive neighbours only when they are within a sensing radius $R$ (in our experiments $R=2.01$\rev{\,m)}. $R$ defines a sensing circle that is divided into 4 equal quadrants $q \in [1,2,3,4]$\rev{, centred on the robot's front, left, back and right}. In each quadrant, a sensor gives the distance, $d_q \in [0, R]$, and bearing, $\psi_q \in [0, \pi/2]$, of the nearest neighbour in that quadrant (see Fig.~\ref{fig:quadrants}). \rev{All other neighbours are ignored.} The robot is battery-aware, that is, it senses its remaining battery percentage, $B_0 \in [0, 100]$. The last sensor that is added to the robot
+is a digital compass, $\theta_0 \in (-\pi, \pi]$ that provides an approximate task direction context. \rev{Sensing is noise-free in simulation; on the real robots the same inputs are computed from motion-capture poses (Section~\ref{sec:EXp_Setup}).}
+
+Each robot runs a 10-10-10-2 Multi-Layer Perceptron (MLP) with ReLU hidden layers and tanh outputs. The $10$-dimensional inputs to the neural network for agent $i$ will be the 8 local sensory readings of all 4 quadrants ($d^i_q, \psi^i_q$), the battery of the agent ($B^i_0$), and the heading of the agent ($\theta^i_0$). The default input (sensory reading) for when there is no neighbour in a quadrant is $d^i_q=R$, and $\psi^i_q=0$. The ten inputs are rescaled to $[-1,1]$ \rev{($2d/R-1$, $4\psi/\pi-1$, $B/50-1$ and $\theta/\pi$)}. The input layer is followed by two hidden layers with 10 neurons each. The output layer contains two neurons: the first outputs the linear velocity $v^i$ and the second one the angular velocity $\omega^i$ of the agent, which are then rescaled to $v^i \in[-0.2,0.2]$ m/s and $\omega^i \in[-\pi/5,\pi/5]$ rad/s. The MLP has $220$ weights \rev{and no biases. The weights are} randomly initialized at the beginning of each \rev{simulation, independently for every robot,} using a uniform distribution in $[-1,1]$. Each NN weight of every robot is updated \rev{at every time step} using a Hebbian learning update rule. As~\cite{vandiggelen2025emergentheterogeneousswarmcontrol}, we use the Hebbian learning update in Eq.~\ref{eq:hebbian}, where $\delta w_{i,j}$, is the weight change corresponding to the connection between pre- and post-synaptic neurons $i$ and $j$, $\mu$ is the constant learning rate, $n_i$ and $n_j$ are the activations of the neurons, and $A_{i,j},B_{i,j},C_{i,j},D_{i,j}$ are the 4 Hebbian learning update rules or genotype which from now on we shall refer to as ABCD-rules for simplicity.
+Each robot will have a different set of NN weights that will vary under the effect of ABCD-rules during its own experience. We keep normalising the weights to prevent unbounded growth during the simulation \cite{leung2025bioinspiredplasticneuralnetworks}\rev{: after each update, any layer whose largest absolute weight exceeds 1 is divided by that value}.
+\begin{equation}
+    \delta w_{i,j}=\mu(A_{i,j}n_in_j+B_{i,j}n_i+C_{i,j}n_j+D_{i,j})
+    \label{eq:hebbian}
+\end{equation}
+
+The ABCD-rules vary across each weight of the NN, resulting in 880 parameters (4 for each of the 220 weights) that need to be optimized for the entire swarm.
+In particular, the swarm shares the genotype of these 880 parameters, which allows the evolutionary algorithm to scale independently from the swarm size \cite{vandiggelen2025emergentheterogeneousswarmcontrol}.
+
+
+\subsection{The Evolutionary Algorithms}
+The Hebbian learning update parameters are optimized using Covariance Matrix Adaptation Evolution Strategy (CMA-ES) \cite{Hansen2001}. Each generation evaluates a population size $\lambda$ of 30 candidate solutions, where each candidate solution represents a complete set of 880 ABCD parameters that define the Hebbian learning rules for all agents in a swarm. At the beginning of the evolutionary process, the ABCD-rules are sampled uniformly from $[-5, 5]$\rev{, and they are kept within these bounds throughout evolution}. The fitness $f$ of each candidate is evaluated by running 3 simulations (each with a different random seed) of a swarm of 20 agents at full battery until one agent's battery depletes to zero. The fitness $f$ of each candidate is determined as the median of the 3 runs, while the individual fitness of each simulation is calculated as explained in Section \ref{sec:stages}.
+
+\rev{CMA-ES then ranks the candidates and uses the best $\lambda/2 = 15$, combined with rank-based weights, to update its search distribution, from which it samples 30 new ABCD-rules for the next generation. This selection is not elitist: parents are not carried over into the next generation. The best candidate ever evaluated is recorded separately and becomes the result of the stage, rather than the best of the last generation.}
+A summary of other Evolution parameters can be found in Table~\ref{tab:swarm_experiment}.
+
+\begin{table}[t]
+    \centering
+    \caption{Evolving swarm experiment parameters for every stage.}
+    \begin{tabular}{llc}
+    \toprule
+         \textbf{Parameter} & \textbf{Description} & \textbf{Value}\\
+        \midrule
+        $N_{ABCD}$ &   Number of rules & $880$\\
+        $\lambda$  & Population size &  $30$\\
+        $N_{\text{gen}}$  & Termination condition & \rev{$100$ (stage 1), $200$ (stage 2)}\\
+        $\sigma_0$  & Initial covariance value & $0.3$\\
+        $N_{\text{repeats}}$  & Number of repeats per individual & $3$\\
+        $\mu$  & Hebbian learning rate & $0.1$\\
+        \rev{$N$}  & \rev{Swarm size during evolution} & \rev{$20$}\\
+        \bottomrule
+    \end{tabular}
+    \label{tab:swarm_experiment}
+\end{table}
+
+
+\begin{table}[t]
+\centering
+\caption{Fitness function during each evolution stage}
+\begin{tabular}{cll}
+\toprule
+\textbf{Stage} & \textbf{Goal} & \textbf{Fitness function}  \\
+\midrule
+{\color{red}1} & {\color{red}Walk upwind (wind on)} &
+{\color{red}$ f = 16\, x_{\text{avg}} $}  \\
+{\color{red}2} & {\color{red}\begin{tabular}[c]{@{}l@{}} Save battery and avoid all collision \end{tabular}} &
+{\color{red}$ f = 16\, x_\text{{avg}} + \dfrac{B_\text{{avg,end}}}{5} - \dfrac{t_\text{{col}} + 3  \cdot t_\text{{wcol}}}{250} $}  \\
+\bottomrule
+\end{tabular}
+\label{tab:fitness_evolution}
+\end{table}
+
+
+\subsection{Evolutionary Stages}
+\label{sec:stages}
+
+In this paper, we perform staged evolutionary experiments, meaning that we consider \rev{two} stages whereby the complexity of the task increases from one stage to the next. This corresponds to a different fitness function in each stage. \rev{Stage 2 starts from the best ABCD-rules found in stage 1.} At the end of each simulation during evolution, the following set of data is recorded that is used to formulate the fitness function: collision time $t_{\text{col}}$, border collision time $t_{\text{wcol}}$, distance travelled towards the left $x_{\text{avg}}$ and remaining battery $B_{\text{avg,end}}$, both averaged over all the agents. \rev{Here $x_{\text{avg}}$ is the distance that the swarm's centroid has moved to the left of the origin, i.e.\ against the wind. Two robots are in collision whenever their centres are less than $0.12$\,m apart, and $t_{\text{col}}$ adds $\Delta t$ for every colliding pair in every time step. $t_{\text{wcol}}$ does the same for every robot touching a wall. In both stages the distance is weighted by 16, so that progress dominates battery saving: robots that stand still drain their battery only at the idle rate, so without this weight the fitness would reward staying put.}
+
+\rev{In stage 1, the wind model is already active, and the fitness rewards only moving towards a target that is assumed to be on the left, i.e.\ directly against the wind, recalling that the robots have no sensor to detect the wind. Because the reward is progress against the wind, the trivial strategy of moving with the wind scores negatively from the start. In stage 2, the fitness combines distance, average remaining battery, and penalties on both wall collisions and inter-robot collisions. The walls are placed to confine agents within a wide horizontal band (in our experiments, defined by coordinates $y=\pm 5$\,m). Stage 1 lasts $100$ generations and stage 2 lasts $200$ generations. Compared with~\cite{mahdavi2026energy}, this curriculum trains stage 1 with the wind on and merges that work's intermediate wall-collision-only stage into the final stage. In our experiments this was the first curriculum that repeatedly produced controllers beating the flocking baseline on distance and remaining battery at the same time.} Table \ref{tab:fitness_evolution} reports the precise expression of the fitness function used in each stage.
+
+\subsection{\texorpdfstring{\rev{Safety Mechanisms for Hardware Transfer}}{Safety Mechanisms for Hardware Transfer}}
+\label{sec:safety}
+\begingroup\color{red}In simulation, robots may overlap; collisions are only counted and penalised. Real robots cannot, so for the hardware experiments we evolve a second controller with the same two-stage curriculum, from scratch, with three safety mechanisms active in every simulated time step. (i) A speed clamp scales down each robot's commanded forward speed as it approaches another robot or a wall, while leaving its turning untouched:
+\begin{equation}
+v^i \leftarrow v^i \cdot \min\!\big(C(g^i_{\text{robot}};\,0.05, 0.30),\ C(g^i_{\text{wall}};\,0.02, 0.15)\big),
+\qquad
+C(g; g_{\text{in}}, g_{\text{out}}) = \operatorname{clip}\!\Big(\tfrac{g - g_{\text{in}}}{g_{\text{out}} - g_{\text{in}}},\,0,\,1\Big),
+\label{eq:clamp}
+\end{equation}
+where $g$ is the gap in metres between robot surfaces, or between the robot and the wall. (ii) The collision distance used by the fitness is inflated by $1.3\times$ to $0.156$\,m, so the controller learns to keep a margin. (iii) After collisions have been counted, robots that still overlap are pushed apart by half of the overlap per pass, for up to two passes. Adding the clamp only at deployment to a controller evolved without it does not work: in our tests it reduced the distance travelled to 10--16\% of the unclamped value, because the Hebbian weight updates react to the mismatch between commanded and executed motion. The clamp is therefore applied during evolution and enforced again on the real robots. Simulation results use the controller evolved without these mechanisms unless stated otherwise.\endgroup
+
+
+\subsection{\texorpdfstring{\rev{Leadership Metrics}}{Leadership Metrics}}
+\label{sec:metrics}
+\begingroup\color{red}
+To measure whether and how robots take turns at the exposed front of the group, we compute four
+metrics from the collective-motion literature from the robots' trajectories. Every time step,
+each robot's movement direction is taken from its change in position, the group heading is the
+circular mean of these directions, and robots are ranked by their position along the group
+heading. The front-most robot is the \emph{front robot}.
+\begin{enumerate}
+\item \emph{Front-position changes.} We count how often the identity of the front robot
+      changes. When robots are nearly level at the front, this identity flickers from step to
+      step without any real change of position. A change is therefore only counted when the
+      new front robot keeps the position for at least 3 steps (1.5\,s); shorter spells are
+      assigned to the robot that already holds the front. This is a simplified version of the
+      switch detection of Butail and Porfiri~\cite{butail2019}. We report changes per minute,
+      and the share of raw changes that persist.
+\item \emph{Front occupancy.} The fraction of time each robot spends at the front,
+      summarised by its Shannon entropy normalised to $[0, 1]$: $1$ when all robots are at the
+      front equally often, $0$ when one robot is always at the front. This is the quantity
+      behind the leader replacement heuristic of Mirzaeinia et al.~\cite{Mirzaeinia2019}.
+\item \emph{Reciprocity.} Following Voelkl et al.~\cite{voelkl2015}, the Pearson correlation
+      across robots between the time each robot spends at the front and at the back. A
+      positive correlation means that robots that lead a lot also trail a lot, i.e.\ they take
+      turns.
+\item \emph{Turning hierarchy.} Following Nagy et al.~\cite{nagy2010}, for every pair of robots
+      we find the time delay of up to 5\,s at which their turning rates are most correlated;
+      the robot whose turns the other follows leads that pair. Summing each robot's outgoing
+      correlations gives a leadership score. We report the normalised entropy of these scores
+      (1 means all robots lead equally) and the steepness of the hierarchy (the slope of the
+      normalised scores sorted by rank; higher means a few robots dominate).
+\end{enumerate}
+\endgroup
+
+\section{Experimental Setup}
+\label{sec:EXp_Setup}
+
+Our simulation environment is a 10-meter-wide corridor along which the agents can walk. In practice, we have a $10 \times 10$ meter frame that is centered on the x-axis and moves horizontally with the agents. This is done to simulate an environment that is unbounded horizontally. \rev{Robots are discs of radius $0.055$\,m (the size of a Thymio-II). At the start of every simulation they are placed uniformly at random in a $3 \times 3$\,m square around the origin, with random headings and at least $0.21$\,m between their centres.} The wind is prescribed as a constant and spatially uniform aligned with the $x$-axis, blowing from left to right. The global position and heading of the robots are updated using a kinematic model\rev{: $x^i \leftarrow x^i - v^i \sin\theta^i\,\Delta t$, $y^i \leftarrow y^i + v^i \cos\theta^i\,\Delta t$, $\theta^i \leftarrow \theta^i + \omega^i\,\Delta t$, where $\theta = 0$ faces $+y$. There is no inertia, wheel slip or contact force.} We set $\Delta t = 0.5$s due to computational burden. In addition, $v_i$ and $\omega_i$ are sampled every 0.5s (2Hz) from the memoryless NN controller.
+
+The main simulation effort of this work has been to model the battery drainage. This is done by considering three components, one that depends on the wind drag $P_\text{wind}$, and two that act on the battery independent from the wind: motor consumption $P_\text{mot}$, and idle consumption due to onboard electronics $P_\text{idle}$. The latter elements are introduced both to capture a complete model of energy consumption, but also to obtain simulations where robots will eventually, no matter what, run out of battery, corresponding to a pragmatic termination condition. To calculate $P_\text{wind}$, a modelling effort was performed to capture the wind dynamics and their contribution as drag on each robot.
+
+To determine the effect of wind on the robots, we simulate a two-dimensional wind field using a ray-marching scheme (Fig.~\ref{fig:wind}). The arena is discretised into $N_x \times N_y$ cells \rev{($50 \times 50$ over the moving $10 \times 10$\,m frame, i.e.\ cells of about $0.2$\,m)} with a free-stream wind speed $U_\infty=100\%$ (percentage scale) blowing along $+x$. \rev{For the wind, each robot is an obstacle disc of radius $r_w = 0.15$\,m.} The wind-percentage field $U^\%_{i,j}\in[0,100\%]$ at each cell $(i,j)$ is propagated left-to-right (like a ray) according to five simple rules\rev{, applied in every row as the ray crosses one column of cells: (1) on entering a robot's disc, $U^\%$ drops by $25\%$ of its value, to no less than $30\%$; (2) while inside the same disc it stays constant; (3) on passing directly from one robot's disc into another's it drops by $25\%$ again; (4) on leaving a disc it stays constant; (5) in free space it recovers towards $U_\infty$ by a fraction $\lambda\,\Delta x$ of the remaining deficit per cell, with $\lambda = 1\,\text{m}^{-1}$, so a wake fills in over about a metre. The field is then smoothed with a normalised exponential kernel $\propto e^{-0.5(|\Delta i| + |\Delta j|)}$, and cells that lie deep inside a wide band of wake across the wind are deepened further (to no less than $10\%$). Several robots side by side therefore shelter those behind them much more than a single robot does. A second smoothing pass follows. Each robot takes its wind from the cell just upstream of it.} The procedure also mimics wake formation behind groups of robots. An example wake behind a wall of robots is shown in Fig.~\ref{fig:wall_of_agents}.
+
+The resulting $U^\%_{i,j}$ provides the local wind speed percentage. If we scale it with the free-stream physical wind speed $V_\infty = 10~\text{m/s}$:
+\begin{equation}
+V_{\text{wind}} = V_\infty\,U^\%_{i,j}.
+\label{eq:vwind_compact}
+\end{equation}
+\begingroup\color{red}The drag force on a robot acts along $+x$ and is
+\begin{equation}
+F_{\text{drag}} = \tfrac{1}{2}\,\rho\,C_dA\,\kappa\,V_{\text{rel}}^{2}, \qquad V_{\text{rel}} = V_{\text{wind}} - \dot{x},
+\label{eq:fdrag_compact}
+\end{equation}
+with $\rho = 1.225$\,kg/m$^3$, $C_dA = 0.0045$\,m$^2$ and $\kappa = 10$ a constant, and $\dot{x}$ the robot's velocity along $x$. The power drawn by the wind load is the work done against this force,
+\begin{equation}
+P_{\text{wind}} = -\,\dot{x}\,F_{\text{drag}},
+\label{eq:pwind_compact}
+\end{equation}
+which is positive when the robot moves against the wind ($\dot{x} < 0$) and negative when it moves with the wind.\endgroup{} Using differential-drive kinematics, we can derive the left and right wheel speeds of the robot $v_l, v_r$ from its forward and angular velocities\rev{, $v_{L,R} = v \mp \omega\, r$ with $r = 0.055$\,m}. Battery drainage of the motor is then taken as:
+\begin{equation}
+P_{\text{mot}} = \gamma(|v_L| + |v_R|),
+\label{eq:pmot_compact}
+\end{equation}
+\rev{with $\gamma = 1/4$,} and the total per–agent power usage combines both effects accounting for some idle drainage $P_{\text{idle}}$ in case robots don't move:
+\begin{equation}
+\color{red}
+P_{\text{use}} = \max\!\big(P_{\text{idle}},\, P_{\text{mot}} + P_{\text{wind}}\big),
+\qquad P_{\text{idle}} = 0.1.
+\label{eq:puse_compact}
+\end{equation}
+\rev{Because of the idle floor, moving with the wind can never recharge the battery.} Battery state $B\in[0,100]$ evolves in discrete time with step
+$\Delta t=0.5~\text{s}$:
+\begin{equation}
+\color{red}
+B(t+\Delta t)=B(t)-c\,P_{\text{use}}\,\Delta t, \qquad c = 2,
+\label{eq:battery_compact}
+\end{equation}
+\rev{so an idle robot loses $0.2\%$ per second. For a single robot moving against the wind at full speed, this model gives about $0.67\%$ per time step in the full wind and $0.16\%$ per time step when sheltered at $U^\% = 30\%$, so shelter reduces the cost of moving by more than a factor of four.}
+This compact phenomenological approximation of aerodynamic disturbances and energy consumption, allows real–time swarm–scale simulations without full fluid dynamics. All implementation details and default parameters are provided in our open-source code repository.
+
+
+\begin{figure}[t]
+  \centering
+  \subfloat[Ray–marching scheme\label{fig:Wind_Simulation}]{
+    \begin{minipage}[t]{0.48\textwidth}
+      \centering
+      \includegraphics[width=0.60\linewidth]{Images/Methodology/Wind_Simulation.png}
+    \end{minipage}
+  }\hfill
+  \subfloat[Wake behind a vertical column of three agents\label{fig:wall_of_agents}]{
+    \begin{minipage}[t]{0.48\textwidth}
+     \centering
+      \includesvg[width=.65\linewidth,inkscapelatex=false]{Images/Methodology/Column_of_Agents.svg}
+    \end{minipage}
+  }
+  \caption{Illustrations of the wind–field model. (a) Rays propagate left–to–right and lose speed percentage when they intersect a robot. (b) When agents align vertically, a thick low–speed wake forms; the legend shows wind speed as a percentage of free-stream wind speed (0\% = navy, 100\% = yellow).}
+  \label{fig:wind}
+\end{figure}

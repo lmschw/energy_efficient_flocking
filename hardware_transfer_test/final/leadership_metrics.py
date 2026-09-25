@@ -247,7 +247,8 @@ def _filtered_runs(front_id, min_dwell_steps=3):
     filtered = [runs[0]]
     for ident, length in runs[1:]:
         if length < min_dwell_steps:
-            continue  # absorb short flicker into whatever identity currently holds
+            filtered[-1][1] += length  # absorb short flicker into whatever identity currently holds
+            continue
         if filtered[-1][0] == ident:
             filtered[-1][1] += length
         else:
