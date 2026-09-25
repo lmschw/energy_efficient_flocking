@@ -33,6 +33,10 @@ were \emph{not} chosen -- see
 \toprule
 \textbf{File (basename, no extension)} & \textbf{Content} & \textbf{Used in} \\
 \midrule
+\texttt{method\_pipeline} & training/evaluation/deployment pipeline & \S\ref{sec:method} \\
+\texttt{method\_controller} & Hebbian controller + update rule & \S\ref{sec:method} \\
+\texttt{method\_sensing\_wind} & sensing quadrants + wind field & \S\ref{sec:method} \\
+\texttt{method\_step\_loop} & per-time-step simulation loop & \S\ref{sec:method} \\
 \texttt{safety\_clamp\_scale\_function} & clamp scale function $C(g)$ & \S\ref{sec:clamp} \\
 \texttt{fitness\_curves\_plain\_seed123} & CMA-ES training curves, both stages & \S\ref{sec:fitness} \\
 \texttt{paper\_fig5a\_distance\_vs\_battery\_n20\_plain\_seed123} & Fig.~5a analog, $n{=}20$ & \S\ref{sec:fig5a} \\
@@ -56,6 +60,20 @@ four \texttt{metric4\_*\_plain\_seed123} figures), copied into \texttt{figures/}
 self-contained Overleaf upload.)
 
 \section{Methodology}
+\label{sec:method}
+Fig.~\ref{fig:pipeline} gives the whole pipeline at a glance; the subsections below give
+the details.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/method_pipeline}
+\caption{Pipeline overview. Both variants run the same 2-stage curriculum from scratch
+(same training seed); the clamped variant additionally has the safety mechanisms active in
+every simulated step. Each stage is a CMA-ES run (bottom). Candidates from all training
+seeds are evaluated against the LJ baseline across swarm sizes; \texttt{plain\_seed123} was
+selected, its unclamped form for simulation results and its clamped form for hardware.}
+\label{fig:pipeline}
+\end{figure}
 
 \subsection{Controller and evolutionary training (shared by both variants)}
 Both variants share the identical architecture, sensor model, and CMA-ES configuration
@@ -65,6 +83,36 @@ $\Delta w_{ij} = \mu(A_{ij}n_in_j + B_{ij}n_i + C_{ij}n_j + D_{ij})$, $\mu=0.1$,
 $(A,B,C,D)$ coefficients (880 real values, bounded $[-5,5]$) evolved by CMA-ES (population 30,
 fitness = median efficiency over 3 seed repeats, $n_{\text{agents}}=20$ candidate evaluation
 swarm, wind grid $50\times50$).
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/method_controller}
+\caption{The controller every robot runs. A 10--10--10--2 network maps sensor readings to
+forward and turning speed. Its weights are not evolved: they start random each episode and
+change every time step by the Hebbian rule, whose per-synapse coefficients $(A,B,C,D)$ --
+880 numbers shared by the whole swarm -- are what CMA-ES evolves.}
+\label{fig:controller}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/method_sensing_wind}
+\caption{(a) Each robot senses only the nearest neighbour in each of its four body-relative
+quadrants within $R$; other neighbours are invisible to it. (b) The wind field the simulator
+computes for a real \texttt{plain\_seed123} swarm: robots leave a low-wind wake downwind
+(+$x$), so a robot sheltered in another's wake meets less drag and drains less battery.
+Fitness rewards the swarm centroid's progress upwind ($-x$).}
+\label{fig:sensing-wind}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/method_step_loop}
+\caption{One simulated time step. Steps 3 and 4's soft collision resolution run only for the
+clamped variant; collisions are counted before resolution, so the fitness penalty sees every
+commanded collision. The episode ends when any robot's battery is empty.}
+\label{fig:step-loop}
+\end{figure}
 
 \subsection{The 2-stage \texttt{walk\_upwind} curriculum}
 \label{sec:curriculum}
