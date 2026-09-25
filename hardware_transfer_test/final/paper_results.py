@@ -129,10 +129,15 @@ def main():
         if not l.startswith("LJ"):
             entry["dist_gain_vs_lj_pct"] = 100 * (x[:, 0].mean() / lj[:, 0].mean() - 1)
             entry["both_beat_paired"] = int(np.sum((x[:, 0] >= lj[:, 0]) & (x[:, 1] >= lj[:, 1])))
+            # two-sided Mann-Whitney U against the baseline, per measure
+            entry["p_dist_vs_lj"] = stats.mannwhitneyu(x[:, 0], lj[:, 0]).pvalue
+            entry["p_batt_vs_lj"] = stats.mannwhitneyu(x[:, 1], lj[:, 1]).pvalue
         out["controllers"][l] = {k: float(v) if not isinstance(v, int) else v for k, v in entry.items()}
+        out["controllers"][l]["per_run"] = {"seeds": SEEDS, "dist": x[:, 0].tolist(), "batt": x[:, 1].tolist()}
         print(f"{l:30s} dist={entry['dist_mean']:6.2f}±{entry['dist_std']:5.2f}  "
               f"batt={entry['batt_mean']:6.2f}±{entry['batt_std']:5.2f}"
               + (f"  dist vs LJ {entry['dist_gain_vs_lj_pct']:+.0f}%  both-beat {entry['both_beat_paired']}/100"
+                 f"  p(dist)={entry['p_dist_vs_lj']:.1e} p(batt)={entry['p_batt_vs_lj']:.1e}"
                  if "both_beat_paired" in entry else ""))
 
     full = np.array([w for b, _, w in aware if b == 100.0])
