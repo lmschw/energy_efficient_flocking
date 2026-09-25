@@ -34,7 +34,7 @@ from lj_baseline import simulate_lj_baseline  # noqa: E402
 from leadership_metrics import _ConfigOverride, WIND_GRID  # noqa: E402
 from leadership_metrics import _front_rank_series, occupancy_and_exchange  # noqa: E402
 
-N_AGENTS_SWEEP = (1, 2, 3, 4, 5, 7, 10, 20)
+N_AGENTS_SWEEP = tuple(range(1, 21))
 SEEDS = list(range(1000, 1030))
 SEED_SINGLE = config.HEBBIAN_DEFAULT_SEED  # 42
 OUT_DIR_FIG = os.path.join(SCRIPT_DIR, "overleaf_summary", "figures")
@@ -108,11 +108,26 @@ def _run_battery_trace(genome_path, cfg, n_agents, seed):
     return tele["battery"][-1]
 
 
-def main():
+def _load_existing():
+    """Reuse already-computed n_agents entries from OUT_JSON (runs are deterministic per seed),
+    so extending N_AGENTS_SWEEP only simulates the new swarm sizes."""
     results = {label: {} for label in CONDITIONS}
+    if os.path.exists(OUT_JSON):
+        for label, per_n in json.load(open(OUT_JSON)).items():
+            if label in results:
+                results[label] = {int(n): v for n, v in per_n.items()}
+    return results
+
+
+def main():
+    results = _load_existing()
+    todo = [n for n in N_AGENTS_SWEEP
+            if not all(n in results[label] and "battery_std_final" in results[label][n]
+                       for label in CONDITIONS)]
+    print(f"Reusing n_agents={sorted(set(N_AGENTS_SWEEP) - set(todo))}; simulating {todo}")
 
     print("=== 30-seed statistics + both-beat rate, default spawn, standard physics ===")
-    for n_agents in N_AGENTS_SWEEP:
+    for n_agents in todo:
         per_label_db = {}
         for label, (genome_path, cfg, _color) in CONDITIONS.items():
             dists, batts = [], []
@@ -137,7 +152,7 @@ def main():
                   f"batt={batts.mean():6.2f}+-{batts.std():5.2f}%{beat_str}")
 
     print("\n=== single-seed (42) position-change + battery-equity metrics ===")
-    for n_agents in N_AGENTS_SWEEP:
+    for n_agents in todo:
         for label, (genome_path, cfg, _color) in CONDITIONS.items():
             batt_final = _run_battery_trace(genome_path, cfg, n_agents, SEED_SINGLE)
             results[label][n_agents]["battery_std_final"] = float(np.std(batt_final))
@@ -153,7 +168,8 @@ def main():
                   f"batt_std={np.std(batt_final):.2f}")
 
     with open(OUT_JSON, "w") as f:
-        json.dump(results, f, indent=2)
+        json.dump({label: {n: per_n[n] for n in sorted(per_n)} for label, per_n in results.items()},
+                  f, indent=2)
     print(f"\nSaved {OUT_JSON}")
 
     os.makedirs(OUT_DIR_FIG, exist_ok=True)

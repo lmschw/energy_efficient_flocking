@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.patches import FancyArrowPatch, Circle
 
-from leadership_metrics import CONDITIONS, CONDITION_LABELS, CONDITION_COLORS
+from leadership_metrics import CONDITIONS, CONDITION_LABELS, CONDITION_SHORT_LABELS, CONDITION_COLORS
 
 plt.rcParams.update({"figure.dpi": 110, "axes.grid": True, "grid.linestyle": ":", "grid.alpha": 0.5})
 
@@ -51,7 +51,7 @@ def _strip_box(ax, data_by_condition, ylabel, title):
                    edgecolors="k", linewidths=0.3, zorder=3, alpha=0.85)
 
     ax.set_xticks(positions)
-    ax.set_xticklabels([CONDITION_LABELS[c].split(" (")[0] for c in CONDITIONS], fontsize=8)
+    ax.set_xticklabels([CONDITION_SHORT_LABELS[c] for c in CONDITIONS], fontsize=8)
     ax.set_ylabel(ylabel, fontsize=9)
     ax.set_title(title, fontsize=10)
 

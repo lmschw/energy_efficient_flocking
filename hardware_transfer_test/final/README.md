@@ -33,6 +33,7 @@ everything else that was tried and set aside, see `../archive/` (and its own REA
 | `n_agents_sweep_analysis.py` | Distance/battery/position-change/battery-equity vs. swarm size |
 | `generate_plain_seed123_clamped.py` | Re-generates `plain_seed123_clamped/`'s videos/metrics |
 | `safety_clamp_figure.py` | The clamp scale-function figure used in the write-up |
+| `fitness_curves.py` | CMA-ES training curves (best efficiency per generation, both stages) |
 
 **Note**: running any of these overwrites its own output with fresh data — if you only need
 to inspect existing numbers, read the JSON/figures directly rather than re-running.

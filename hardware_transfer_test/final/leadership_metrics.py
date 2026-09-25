@@ -85,6 +85,11 @@ CONDITION_LABELS = {
     "plain_seed123_clamped": "plain_seed123 (clamped, hardware-safe)",
     "lj_baseline": "LJ baseline (Table 3, rule-based)",
 }
+CONDITION_SHORT_LABELS = {  # for tight x-tick labels, where the full labels don't fit
+    "plain_seed123": "unclamped",
+    "plain_seed123_clamped": "clamped",
+    "lj_baseline": "LJ baseline",
+}
 CONDITION_COLORS = {
     "plain_seed123": "#D95319",
     "plain_seed123_clamped": "#0072BD",

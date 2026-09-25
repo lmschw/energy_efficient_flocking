@@ -34,6 +34,7 @@ were \emph{not} chosen -- see
 \textbf{File (basename, no extension)} & \textbf{Content} & \textbf{Used in} \\
 \midrule
 \texttt{safety\_clamp\_scale\_function} & clamp scale function $C(g)$ & \S\ref{sec:clamp} \\
+\texttt{fitness\_curves\_plain\_seed123} & CMA-ES training curves, both stages & \S\ref{sec:fitness} \\
 \texttt{paper\_fig5a\_distance\_vs\_battery\_n20\_plain\_seed123} & Fig.~5a analog, $n{=}20$ & \S\ref{sec:fig5a} \\
 \texttt{paper\_fig6\_trajectory\_comparison\_plain\_seed123} & Fig.~6 analog, $n{=}2$ vs.\ $20$ & \S\ref{sec:fig6} \\
 \texttt{n\_agents\_sweep\_distance\_battery\_plain\_seed123} & distance/battery vs.\ swarm size & \S\ref{sec:nsweep} \\
@@ -42,15 +43,17 @@ were \emph{not} chosen -- see
 \texttt{metric1\_reciprocity\_scatter}, \texttt{metric1\_seed\_sweep\_n20} & Voelkl reciprocity & \S\ref{sec:leadership} \\
 \texttt{metric2\_hierarchy\_summary}, \texttt{metric2\_seed\_sweep\_n20} & Nagy hierarchy network & \S\ref{sec:leadership} \\
 \texttt{metric3\_front\_occupancy}, \texttt{metric3\_exchange\_rate}, \texttt{metric3\_seed\_sweep\_n20} & front-rank occupancy/exchange & \S\ref{sec:leadership} \\
-\texttt{metric4\_exchange\_rate\_filtered}, \texttt{metric4\_seed\_sweep\_n20} & persistence-filtered hand-offs & \S\ref{sec:leadership} \\
+\texttt{metric4\_exchange\_rate\_filtered\_plain\_seed123} & persistence-filtered exchange rate vs.\ swarm size & \S\ref{sec:leadership} \\
+\texttt{metric4\_handoff\_timeline\_n20\_plain\_seed123} & filtered hand-off timeline, $n{=}20$ & \S\ref{sec:leadership} \\
+\texttt{metric4\_switch\_event\_raster\_n20\_plain\_seed123} & hand-off timing, 30 seeds, $n{=}20$ & \S\ref{sec:leadership} \\
+\texttt{metric4\_seed\_sweep\_n20\_plain\_seed123} & real hand-off count, 30 seeds, $n{=}20$ & \S\ref{sec:leadership} \\
 \bottomrule
 \end{tabular}
 \end{center}
-(Most leadership-metric figures live in \texttt{leadership\_analysis\_plain\_seed123/} --
-kept isolated from the original three-condition pipeline's \texttt{leadership\_analysis/} per
-the same isolation request -- except the two embedded directly in this document
-(\texttt{metric3\_exchange\_rate\_plain\_seed123}, \texttt{metric4\_exchange\_rate\_filtered\_plain\_seed123}),
-copied into \texttt{figures/} for a self-contained Overleaf upload.)
+(Most leadership-metric figures live in \texttt{../leadership\_analysis/} -- except those
+embedded directly in this document (\texttt{metric3\_exchange\_rate\_plain\_seed123} and the
+four \texttt{metric4\_*\_plain\_seed123} figures), copied into \texttt{figures/} for a
+self-contained Overleaf upload.)
 
 \section{Methodology}
 
@@ -133,6 +136,25 @@ their stage-1 efficiency under the same clamp -- \texttt{plain\_seed123} happene
 less dependent on the tight/fast clustering strategy the clamp forecloses, which is part of
 why it survived retraining better than the alternatives; see the investigation log.) Genome:
 \texttt{hardware\_transfer\_test/final/plain\_seed123\_clamped/genome\_trained\_n20.npy}.
+
+\subsection{Training curves}
+\label{sec:fitness}
+Fig.~\ref{fig:fitness} shows the best candidate's fitness in every CMA-ES generation for both
+variants (each generation's fitness is the median over 3 seed repeats, so single-generation
+values are noisy). The saved genome is the best candidate CMA-ES ever evaluated, not the last
+generation's -- marked with a star. In stage~2 both runs peak mid-run (generation 115 unclamped,
+82 clamped) and decline afterwards, so saving the best-ever candidate rather than the final
+one matters here. Per-generation mean fitness was only drawn into the live training plot and
+never saved as data, so it is not shown.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\textwidth]{figures/fitness_curves_plain_seed123}
+\caption{CMA-ES training progress, best efficiency per generation, for the unclamped and
+clamped variants ($n{=}20$, training seed 123). Each stage has its own reward, so the two
+panels' y-axes are not comparable.}
+\label{fig:fitness}
+\end{figure}
 
 \subsection{Evaluation protocol}
 Identical for both variants unless noted: seed 42 (\texttt{config.HEBBIAN\_DEFAULT\_SEED}) for
@@ -279,6 +301,36 @@ increases it (raw switches 24~$\to$~55, real switches 10~$\to$~23 at $n{=}20$, s
 \caption{Metric 4 -- persistence-filtered (real) exchange rate vs.\ swarm size. Both genome
 variants sit above the LJ baseline at nearly every swarm size once jitter is filtered out.}
 \label{fig:m4}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.9\textwidth]{figures/metric4_handoff_timeline_n20_plain_seed123}
+\caption{Metric 4 -- persistence-filtered (``real'', $\geq$3-step dwell) front-most agent over
+time, $n{=}20$, seed 42. Each bar is one agent holding the front position; each change of row
+is one real hand-off. Time axes differ per panel because episode lengths differ -- compare each
+panel directly against that condition's \texttt{n20/video.mp4}.}
+\label{fig:m4-timeline}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.85\textwidth]{figures/metric4_switch_event_raster_n20_plain_seed123}
+\caption{Metric 4 -- real hand-off timing across the 30-seed robustness sweep ($n{=}20$): each
+dot is one real hand-off in one run, each row is one seed, x-axis is hand-off time as a
+fraction of that run's episode length. Shows whether hand-offs are sustained throughout the
+episode or confined to a transient phase.}
+\label{fig:m4-raster}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.6\textwidth]{figures/metric4_seed_sweep_n20_plain_seed123}
+\caption{Metric 4 -- real hand-off count per run across the 30-seed robustness sweep
+($n{=}20$). Median [range]: unclamped 27.5 [18, 40], clamped 13.5 [4, 27], LJ baseline 13
+[6, 24] -- the LJ baseline's median of 597 \emph{raw} switches per run collapses to 13 once
+jitter is filtered out.}
+\label{fig:m4-seeds}
 \end{figure}
 
 \paragraph{Metrics 1/2 -- reciprocity and hierarchy.} Reciprocity ($r$) is negative for all
