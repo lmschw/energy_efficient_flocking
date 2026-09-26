@@ -190,16 +190,23 @@ class HebbianSwarmExperiment:
                 dy = current_position[1] - self._prev_position[1]
                 dist = math.hypot(dx, dy)
                 speed = dist / dt
-                travel_heading = 0.0 if dist < 1e-9 else math.atan2(dy, dx) - math.pi / 2.0
-                angular_vel = self._last_w if self._last_w is not None else 0.0
-                self.battery, _batt_drain, _wind_pct = self._wind_battery_model.compute_virtual_battery_update(
-                    agents, self_index, self.battery, (speed, angular_vel, travel_heading), dt)
+                if speed > cfg.MAX_PLAUSIBLE_SPEED_MPS:
+                    # Not driven -- a hand relocation (see MAX_PLAUSIBLE_SPEED_MPS). Skip
+                    # this tick's drain and re-baseline from the new position below.
+                    print(f"[{self.self_hostname}] implausible {speed:.2f} m/s ({dist:.2f} m in "
+                          f"one tick) -- treating as a manual relocation, no battery drain.")
+                else:
+                    travel_heading = 0.0 if dist < 1e-9 else math.atan2(dy, dx) - math.pi / 2.0
+                    angular_vel = self._last_w if self._last_w is not None else 0.0
+                    self.battery, _batt_drain, _wind_pct = self._wind_battery_model.compute_virtual_battery_update(
+                        agents, self_index, self.battery, (speed, angular_vel, travel_heading), dt)
             agents[self_index, 3] = self.battery
-            if self_tracked:
-                self._prev_position = current_position
-            # else: leave _prev_position at its last real value, so the delta computed
-            # once tracking resumes is still measured from a real prior position instead
-            # of silently skipping straight past the gap.
+            # Only a position from the IMMEDIATELY previous tick is a valid baseline: after
+            # any tracking gap (including a stale-feed rejection), the next tracked tick
+            # re-baselines instead of charging the whole gap's displacement as one tick of
+            # driving -- that is what drained thymio-08's battery to -39% on 2026-09-26
+            # (4.26 m "in 0.5 s" after being carried back to the middle) and stopped it.
+            self._prev_position = current_position if self_tracked else None
 
         sensor_inputs = get_sensor_data(agents)  # (10, n_agents)
         x_in = sensor_inputs[:, self_index].copy()

@@ -22,6 +22,11 @@ WEIGHT_INIT_RANGE = 1.0
 # --- Sensing (must match training) ---
 SENSING_RADIUS = 2.01          # meters
 LINEAR_VEL_MAX = 0.2           # m/s
+MAX_PLAUSIBLE_SPEED_MPS = 2.0 * LINEAR_VEL_MAX
+# Tracked position deltas faster than this can't have been driven -- they're the robot being
+# picked up and moved by hand (or a tracking jump). hebbian_swarm_experiment.py skips the
+# simulated battery drain for such a tick instead of charging it as high-speed driving,
+# which previously depleted the virtual battery and permanently stopped the robot.
 ANGULAR_VEL_MAX = math.pi / 5  # rad/s
 
 # --- Battery ---
@@ -285,21 +290,16 @@ CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # unclamped one -- confirmed necessary, not optional (this was nearly missed: nothing in this
 # package enforced it before 2026-09-16, only the corridor/wall case below existed). Applied
 # in hebbian_swarm_experiment.py._tick() the same way as the corridor governor: scales v only
-# (never w), using the TRUE (uninflated) ROBOT_RAD and the exact training thresholds -- but,
-# unlike training, DIRECTION-AWARE (see the 2026-09-26 note below).
+# (never w), using the TRUE (uninflated) ROBOT_RAD and the exact training thresholds and
+# formula (not direction-aware, same as the simulation's clamp).
 AGENT_SAFETY_CLAMP_OUTER_GAP = 0.30   # gap [m] at which braking begins (full speed above this)
 AGENT_SAFETY_CLAMP_INNER_GAP = 0.05   # gap [m] at which forward speed reaches zero
-# RESTORED + DIRECTION-AWARE (2026-09-26): back to the training values 0.30/0.05, and
-# _agent_safety_speed_scale() now only brakes for neighbors the robot is actually driving
-# TOWARD (sign(v) * heading vector points at them); driving away from a neighbor is never
-# braked. The 0.12/-0.03 loosening below was a workaround for the non-directional clamp's
-# deadlock (touching robots couldn't drive apart); direction-awareness removes that deadlock
-# directly. The loosening itself caused a new failure: at a measured gap of 0 the clamp still
-# allowed 20% forward speed, so a robot seeking a neighbor's wake (energetically optimal)
-# kept pushing into it -- two robots stuck together every run and had to be separated by
-# hand. Off-distribution tradeoff: the SIMULATION's clamp is not direction-aware, but the
-# simulation also has soft collision resolution physically separating overlapping agents,
-# which the hardware lacks. History of the previous values follows.
+# RESTORED (2026-09-26) to the training values 0.30/0.05. The 0.12/-0.03 loosening below
+# caused a new failure: at a measured gap of 0 the clamp still allowed 20% forward speed, so
+# a robot seeking a neighbor's wake (energetically optimal) kept pushing into it -- two
+# robots stuck together every run and had to be separated by hand. The restored values
+# tested fine on hardware. A direction-aware variant (only braking for neighbors ahead) was
+# tried and dropped as unnecessary. History of the previous values follows.
 #
 # LOOSENED (2026-09-23) from the original 0.30/0.05 -- which matched experiment/config.py's
 # HEBBIAN_SAFETY_CLAMP_OUTER_GAP/INNER_GAP exactly -- after real trial data showed thymio-09
