@@ -76,7 +76,7 @@ WHEEL_DISTANCE_M = 0.085     # thymio_swarm_platform RobotConfig.wheel_distance
 MAX_MOTOR_TARGET = 500       # thymio_swarm_platform RobotConfig.max_motor (raw units;
                              # NOT enforced by the platform's Robot.drive() itself)
 
-MOTOR_UNITS_PER_MPS = 5455.36
+MOTOR_UNITS_PER_MPS = 3553.09
 #MOTOR_UNITS_PER_MPS = 3609.86
 # STILL STALE / DO NOT TRUST -- same flawed calibration run as HEADING_OFFSET_RAD above:
 # travel_speed is measured as hypot() over the (wrong) selected ground-plane axes, so
@@ -91,40 +91,40 @@ HEADING_OFFSET_RAD_DEFAULT = -2.8531
 # experiment/simulation_free_global_mod_2_LJ.py). Depends on your Motive ground-plane
 # calibration and how each rigid body's "front" was defined when you created it.
 
+#if ROTATION_SIGN = 1.0:
 HEADING_OFFSET_RAD = {
-    "thymio-08": -1.7287,
-    "thymio-12": +2.7956,
+    "thymio-08": -1.3214,
+    "thymio-12": -1.4675,
     "thymio-15": -0.0046,
     "thymio-17": +0.2781,
-    "thymio-09": +0.0727,
+    "thymio-09": -1.3747,
     "thymio-25": -2.6076,
-    "thymio-11": +2.9281,
-    "thymio-03": -0.0228,
-    "thymio-04": +1.5512,
-    "thymio-01": +2.8539,
-    "thymio-07": +3.0682,
+    "thymio-11": -1.2086,
+    "thymio-04": -1.1698,
+    "thymio-01": -0.4044,
+    "thymio-07": -0.4476,
     "thymio-19": -0.2165,
     "thymio-18": -0.3709,
-    "thymio-14": -0.9035,
+    "thymio-14": -1.1748,
 }
 
-# if rotation_sign == -1
+# if ROTATION_SIGN = -1.0:
 # HEADING_OFFSET_RAD = {
-#     "thymio-08": -1.7355,
-#     "thymio-12": +3.1007,
+#     "thymio-08": -2.3280,
+#     "thymio-12": -1.7524,
 #     "thymio-15": +0.0893,
 #     "thymio-17": -0.4416,
-#     "thymio-09": -0.0134,
+#     "thymio-09": -1.8180,
 #     "thymio-25": -0.8526,
-#     "thymio-11": -2.9537,
-#     "thymio-03": +0.0592,
-#     "thymio-04": +0.4832,
-#     "thymio-01": -3.0001,
-#     "thymio-07": +3.1158,
+#     "thymio-11": -1.8365,
+#     "thymio-04": +0.0737,
+#     "thymio-01": -1.7569,
+#     "thymio-07": -2.5926,
 #     "thymio-19": +0.0595,
 #     "thymio-18": +0.1304,
-#     "thymio-14": +0.4056,
+#     "thymio-14": -2.1559,
 # }
+
 
 # PER-ROBOT, not one shared constant -- pose_utils.poses_to_agents() looks up each pose's
 # own hostname here, falling back to HEADING_OFFSET_RAD_DEFAULT (with a one-time warning,
