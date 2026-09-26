@@ -38,17 +38,15 @@ from pose_utils import poses_to_agents
 from motor_utils import velocity_to_motor_targets
 
 
-def _corridor_speed_scale(y, host):
+def _corridor_speed_scale(y):
     """Deployment-only wall-safety governor -- see CORRIDOR_Y_MIN/MAX's comment in
     controller_config.py for why this exists (the genome has no wall sense of its own).
     Returns a [0, 1] multiplier for v: 1.0 away from both walls, scaling linearly down to
-    0.0 over the last CORRIDOR_SLOWDOWN_MARGIN_M before either wall. Uses `host`'s own
-    CORRIDOR_Y_BOUNDS entry if it has one, else the shared CORRIDOR_Y_MIN/MAX. Disabled
-    (always 1.0) until both bounds are set."""
-    y_min, y_max = cfg.CORRIDOR_Y_BOUNDS.get(host, (cfg.CORRIDOR_Y_MIN, cfg.CORRIDOR_Y_MAX))
-    if y_min is None or y_max is None:
+    0.0 over the last CORRIDOR_SLOWDOWN_MARGIN_M before either wall. Disabled (always
+    1.0) until both CORRIDOR_Y_MIN and CORRIDOR_Y_MAX are set."""
+    if cfg.CORRIDOR_Y_MIN is None or cfg.CORRIDOR_Y_MAX is None:
         return 1.0
-    margin = min(y - y_min, y_max - y)
+    margin = min(y - cfg.CORRIDOR_Y_MIN, cfg.CORRIDOR_Y_MAX - y)
     if margin <= 0.0:
         return 0.0
     return min(1.0, margin / cfg.CORRIDOR_SLOWDOWN_MARGIN_M)
@@ -233,7 +231,7 @@ class HebbianSwarmExperiment:
             # vel[:,0] *= np.minimum(agent_scale, wall_scale) combination exactly: whichever
             # constraint (nearest neighbor or nearest wall) is more restrictive wins, rather
             # than compounding both into an even smaller scale.
-            v *= min(_corridor_speed_scale(current_position[1], self.self_hostname),
+            v *= min(_corridor_speed_scale(current_position[1]),
                      _agent_safety_speed_scale(agents, self_index))
         left, right = velocity_to_motor_targets(v, w)
         await self.robot.drive(left, right)

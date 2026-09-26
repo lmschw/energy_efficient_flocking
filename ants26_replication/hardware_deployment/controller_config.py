@@ -250,11 +250,16 @@ STALE_POSE_TICK_THRESHOLD = 3
 # simpler and strictly safer than trying to also read intent from heading, at the cost
 # of some unnecessary slowdown in that case.
 
-CORRIDOR_Y_MIN = -0.702  # meters, sim-frame y (agents[:, 1]) -- measure with
-CORRIDOR_Y_MAX = 1.272   # hebbian_pose_calibration.py <hostname> (point-and-sample at
+CORRIDOR_Y_MIN = -1.70   # meters, sim-frame y (agents[:, 1]) -- measure with
+CORRIDOR_Y_MAX = 1.40    # hebbian_pose_calibration.py <hostname> (point-and-sample at
                          # each wall) and set BOTH before relying on this to prevent wall
-                         # strikes. RECALIBRATED (2026-09-26) against the current session's
-                         # corridor -- governor re-enabled. History: RESET TO None
+                         # strikes. SET 2026-09-26 with ~0.2 m deliberate buffer inside the
+                         # walls: per-robot wall samples that day agreed on the upper wall
+                         # (1.595-1.620) but not the lower one (-1.896 .. -0.384) because
+                         # OptiTrack loses several robots near that wall, so per-robot bounds
+                         # were dropped. Lower wall taken from the best-tracked robot
+                         # (thymio-11, -1.896) and the logs (robots reached -1.84 there);
+                         # upper from the lowest of the five (1.595). History: RESET TO None
                          # (2026-09-23) because the previous 0.327/1.229
                          # values were stale from an earlier calibration session and no
                          # longer bracket the room's real y-range at all -- confirmed via
@@ -270,16 +275,6 @@ CORRIDOR_Y_MAX = 1.272   # hebbian_pose_calibration.py <hostname> (point-and-sam
                          # CURRENT session's actual corridor before setting these again,
                          # since walking into a real wall is what this governor exists to
                          # prevent.
-CORRIDOR_Y_BOUNDS = {
-    # "thymio-08": (-1.804, 1.572),
-}
-# PER-ROBOT (min, max) overrides of CORRIDOR_Y_MIN/MAX above, keyed by hostname -- same
-# pattern as HEADING_OFFSET_RAD. Robots touching the same physical wall report different
-# sim_y (each rigid body's tracked origin sits at a different offset from the robot's real
-# center), so one shared pair was either too loose for some robots (they hit the wall) or,
-# once tightened to protect those, too tight for the rest (braked to a stop mid-corridor).
-# Measure each robot at both walls with hebbian_pose_calibration.py <hostname>. A hostname
-# not listed here falls back to the shared CORRIDOR_Y_MIN/MAX.
 CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # v scales linearly from 1.0 (at this distance or farther from either wall) to 0.0 (at
 # the wall) over this margin. Tune to your corridor's real width and the robot's real

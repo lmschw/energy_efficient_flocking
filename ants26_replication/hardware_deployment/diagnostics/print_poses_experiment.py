@@ -22,11 +22,10 @@ needed there beyond its printed instructions):
    again, and press `p`/`r` again for sample #2. Repeat for as many points as you need.
 5. Press `s` to stop when done.
 
-For the corridor walls specifically: sample at each wall (step 2-4 above), then set this
-robot's CORRIDOR_Y_BOUNDS entry to (smaller, larger) of the two printed "sim frame y" values,
-each with a little headroom inward (see controller_config.py's comment on
-CORRIDOR_SLOWDOWN_MARGIN_M for how much margin makes sense for your setup). Do this per
-robot -- different robots report different sim_y at the same wall.
+For CORRIDOR_Y_MIN/CORRIDOR_Y_MAX specifically: sample at each wall (step 2-4 above), then
+set CORRIDOR_Y_MIN to the smaller of the two printed "sim frame y" values and
+CORRIDOR_Y_MAX to the larger, each with a little headroom inward (see controller_config.py's
+comment on CORRIDOR_SLOWDOWN_MARGIN_M for how much margin makes sense for your setup).
 
 Why `pause()` and `resume()` both trigger a sample rather than actually pausing/resuming
 anything: this experiment doesn't drive the robot or run any continuous loop that needs
@@ -103,7 +102,7 @@ class PrintPosesExperiment:
                      f"ROTATION_SIGN={cfg.ROTATION_SIGN} -> sim frame "
                      f"x={sim_x:.3f} y={sim_y:.3f} heading={sim_heading:+.3f} rad")
             if sim_y is not None and abs(sim_y) < cfg.UNTRACKED_XY_THRESHOLD:
-                line += (f" | for this robot's CORRIDOR_Y_BOUNDS entry: use this y value if this point is "
+                line += (f" | for CORRIDOR_Y_MIN/MAX: use this y value if this point is "
                          f"at (or just inside) a wall")
 
         print(line)

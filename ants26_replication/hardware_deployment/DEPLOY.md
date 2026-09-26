@@ -153,22 +153,17 @@ If these were your two corridor-wall samples: CORRIDOR_Y_MIN=-1.760  CORRIDOR_Y_
 ```
 
 Repeat the whole command (`python3 hebbian_pose_calibration.py <hostname>`) for each other
-robot, at the same two physical points. Robots touching the same wall report different
-`sim_y` (each rigid body's tracked origin is offset differently from the robot's center),
-so the wall bounds are **per robot**: a shared pair either lets some robots hit the wall or
-stops the others mid-corridor.
+robot — `CORRIDOR_Y_MIN`/`MAX` are shared constants (one corridor), but it's worth sampling
+each robot's own tracking at the same two physical points to make sure they all agree.
 
-Each robot's (min, max) = the smaller/larger of its own sampled `sim_y` values — each with a
+`CORRIDOR_Y_MIN`/`MAX` = the smaller/larger of the sampled `sim_y` values — each with a
 little headroom inward, not the exact wall-touching value.
 
 Edit `controller_config.py`:
 ```python
-CORRIDOR_Y_BOUNDS = {
-    "thymio-17": (-1.740, 1.830),   # its measured min/max, with a little headroom inward
-    "thymio-18": (-1.810, 1.770),
-}
+CORRIDOR_Y_MIN = -1.850   # your measured min, with a little headroom inward
+CORRIDOR_Y_MAX = 2.310    # your measured max, with a little headroom inward
 ```
-`CORRIDOR_Y_MIN`/`MAX` stay as the fallback for any robot not listed in `CORRIDOR_Y_BOUNDS`.
 Then tune `CORRIDOR_SLOWDOWN_MARGIN_M` if needed (default 0.5m — larger gives more braking
 distance at the cost of usable corridor width). Commit + push (Step 2).
 
