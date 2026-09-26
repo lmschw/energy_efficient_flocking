@@ -35,6 +35,9 @@ class FakeRobot:
         self.drive_calls.append((left, right))
         print(f"  drive(left={left}, right={right})")
 
+    async def proximity_horizontal(self):
+        return [0, 0, 0, 0, 0, 0, 0]  # 5 front + 2 rear, all "nothing sensed" by default
+
     async def stop(self):
         self.stopped = True
         print("  stop()")

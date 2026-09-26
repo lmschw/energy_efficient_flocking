@@ -52,6 +52,42 @@ def _corridor_speed_scale(y):
     return min(1.0, margin / cfg.CORRIDOR_SLOWDOWN_MARGIN_M)
 
 
+def _apply_ir_backoff(v, ir_values):
+    """Hardware-local, OptiTrack-INDEPENDENT emergency backoff using the Thymio's own
+    onboard IR proximity sensors (prox.horizontal via robot.proximity_horizontal(),
+    never called anywhere else in this codebase -- confirmed via hardware_deployment's
+    own README: OptiTrack has been used as a pure stand-in for this sensor so far).
+    Standard Thymio II prox.horizontal layout: ir_values[0:5] are the 5 front-facing
+    sensors (far-left to far-right), ir_values[5:7] are the 2 rear-facing sensors.
+
+    This exists because EVERY other safety layer in this file (_corridor_speed_scale,
+    _agent_safety_speed_scale, UNTRACKED_SAFE_V_CAP) is derived from OptiTrack poses,
+    and OptiTrack itself degrades/drops out most often from exactly the tight-clustering
+    situations those layers exist to prevent (see pose_utils.py's stale-freeze/
+    up-axis-outlier detectors) -- a purely mocap-derived clamp is structurally blind to
+    its own worst case. Real IR reflectance off a nearby robot's body doesn't depend on
+    OptiTrack tracking anyone at all, so this still works when the clamps above don't.
+
+    Overrides v (never w, same simplest-option tradeoff as every other reflex here) the
+    instant something is physically close in front or behind -- no persistence delay
+    (unlike _apply_obstacle_backoff's OptiTrack-derived streak counters): IR readings are
+    a direct, low-latency local measurement, not a noisy external tracking feed, so there
+    is no equivalent reason to wait out a few ticks before reacting. Takes priority over
+    every other v adjustment in _tick() by running last, right before motor conversion.
+
+    IR_OBSTACLE_THRESHOLD/IR_BACKOFF_SPEED (controller_config.py) are UNVERIFIED
+    placeholders -- prox.horizontal's raw scale depends on your robots' surface
+    reflectivity and hasn't been measured on this rig. Calibrate before trusting this:
+    print raw proximity_horizontal() values at a few known real distances first."""
+    front_max = max(ir_values[0:5])
+    rear_max = max(ir_values[5:7])
+    if front_max > cfg.IR_OBSTACLE_THRESHOLD:
+        return -cfg.IR_BACKOFF_SPEED
+    if rear_max > cfg.IR_OBSTACLE_THRESHOLD:
+        return cfg.IR_BACKOFF_SPEED
+    return v
+
+
 def _apply_obstacle_backoff(state, v, front_d, back_d):
     """Deployment-only reflex -- see OBSTACLE_BACKOFF_* in controller_config.py for the
     full rationale (direct answer to AGENT_SAFETY_CLAMP_INNER_GAP's deadlock history and
@@ -287,6 +323,10 @@ class HebbianSwarmExperiment:
             # slow crawl instead (direction/w still untouched, same as every other
             # deployment-only reflex here).
             v = max(-cfg.UNTRACKED_SAFE_V_CAP, min(cfg.UNTRACKED_SAFE_V_CAP, v))
+
+        ir = await self.robot.proximity_horizontal()
+        v = _apply_ir_backoff(v, ir)
+
         left, right = velocity_to_motor_targets(v, w)
         await self.robot.drive(left, right)
         self._last_w = w
@@ -306,7 +346,8 @@ class HebbianSwarmExperiment:
                        "qz": raw_orientation[2], "qw": raw_orientation[3],
                        "n_agents_seen": _debug_n_agents, "front_d": _debug_front_d,
                        "back_d": _debug_back_d, "right_d": _debug_right_d,
-                       "left_d": _debug_left_d},
+                       "left_d": _debug_left_d,
+                       "ir_front_max": max(ir[0:5]), "ir_rear_max": max(ir[5:7])},
                 command={"v": float(v), "w": float(w), "left": left, "right": right},
             )
         return v, w, left, right

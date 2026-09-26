@@ -372,6 +372,26 @@ OBSTACLE_BACKOFF_SPEED = 0.05   # m/s, magnitude of the straight-line backoff/fo
 OBSTACLE_BACKOFF_TICKS = 4      # how many ticks the reflex holds once triggered (~2s)
                                 # before re-evaluating from scratch.
 
+IR_OBSTACLE_THRESHOLD = 2000     # raw prox.horizontal units. UNVERIFIED PLACEHOLDER --
+                                  # has NOT been measured on this rig's actual robots
+                                  # (raw scale depends on surface reflectivity/lighting).
+                                  # Before trusting this: print robot.proximity_horizontal()
+                                  # at a few known real distances (e.g. 15cm/10cm/5cm/contact
+                                  # against another Thymio's actual body, not a hand) and set
+                                  # this to comfortably below the contact-range reading.
+IR_BACKOFF_SPEED = 0.08          # m/s, straight-line backoff commanded by
+                                  # _apply_ir_backoff() in hebbian_swarm_experiment.py the
+                                  # instant a front/rear IR sensor crosses
+                                  # IR_OBSTACLE_THRESHOLD -- see that function's docstring.
+                                  # Faster than OBSTACLE_BACKOFF_SPEED/UNTRACKED_SAFE_V_CAP
+                                  # above on purpose: this fires on a direct, low-noise local
+                                  # measurement of an imminent physical collision, not an
+                                  # inferred/uncertain OptiTrack state, so a firm reaction is
+                                  # appropriate here in a way it wasn't for those.
+                                  # ir_front_max/ir_rear_max are logged every tick
+                                  # specifically so this threshold can be recalibrated from
+                                  # real trial data rather than guessed twice.
+
 UNTRACKED_SAFE_V_CAP = 0.03     # m/s. hebbian_swarm_experiment.py._tick() applies this cap
                                 # to |v| whenever self_tracked is False, in place of the
                                 # normal corridor/agent-safety clamp (neither can be computed
