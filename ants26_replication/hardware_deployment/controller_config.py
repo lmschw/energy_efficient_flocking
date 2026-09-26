@@ -285,11 +285,22 @@ CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # unclamped one -- confirmed necessary, not optional (this was nearly missed: nothing in this
 # package enforced it before 2026-09-16, only the corridor/wall case below existed). Applied
 # in hebbian_swarm_experiment.py._tick() the same way as the corridor governor: scales v only
-# (never w), using the TRUE (uninflated) ROBOT_RAD the training run used but -- see the
-# 2026-09-23 note below -- DELIBERATELY LOOSENED thresholds rather than the exact training
-# values, a real off-distribution tradeoff made after a genuine deadlock, not an oversight.
-AGENT_SAFETY_CLAMP_OUTER_GAP = 0.12   # gap [m] at which braking begins (full speed above this)
-AGENT_SAFETY_CLAMP_INNER_GAP = -0.03  # gap [m] at which forward speed reaches zero (contact)
+# (never w), using the TRUE (uninflated) ROBOT_RAD and the exact training thresholds -- but,
+# unlike training, DIRECTION-AWARE (see the 2026-09-26 note below).
+AGENT_SAFETY_CLAMP_OUTER_GAP = 0.30   # gap [m] at which braking begins (full speed above this)
+AGENT_SAFETY_CLAMP_INNER_GAP = 0.05   # gap [m] at which forward speed reaches zero
+# RESTORED + DIRECTION-AWARE (2026-09-26): back to the training values 0.30/0.05, and
+# _agent_safety_speed_scale() now only brakes for neighbors the robot is actually driving
+# TOWARD (sign(v) * heading vector points at them); driving away from a neighbor is never
+# braked. The 0.12/-0.03 loosening below was a workaround for the non-directional clamp's
+# deadlock (touching robots couldn't drive apart); direction-awareness removes that deadlock
+# directly. The loosening itself caused a new failure: at a measured gap of 0 the clamp still
+# allowed 20% forward speed, so a robot seeking a neighbor's wake (energetically optimal)
+# kept pushing into it -- two robots stuck together every run and had to be separated by
+# hand. Off-distribution tradeoff: the SIMULATION's clamp is not direction-aware, but the
+# simulation also has soft collision resolution physically separating overlapping agents,
+# which the hardware lacks. History of the previous values follows.
+#
 # LOOSENED (2026-09-23) from the original 0.30/0.05 -- which matched experiment/config.py's
 # HEBBIAN_SAFETY_CLAMP_OUTER_GAP/INNER_GAP exactly -- after real trial data showed thymio-09
 # and thymio-11 fully deadlocked: nearest_gap computed as -0.043m (center distance 0.067m,
