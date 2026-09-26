@@ -270,6 +270,16 @@ CORRIDOR_Y_MAX = 1.572   # hebbian_pose_calibration.py <hostname> (point-and-sam
                          # CURRENT session's actual corridor before setting these again,
                          # since walking into a real wall is what this governor exists to
                          # prevent.
+CORRIDOR_Y_BOUNDS = {
+    # "thymio-08": (-1.804, 1.572),
+}
+# PER-ROBOT (min, max) overrides of CORRIDOR_Y_MIN/MAX above, keyed by hostname -- same
+# pattern as HEADING_OFFSET_RAD. Robots touching the same physical wall report different
+# sim_y (each rigid body's tracked origin sits at a different offset from the robot's real
+# center), so one shared pair was either too loose for some robots (they hit the wall) or,
+# once tightened to protect those, too tight for the rest (braked to a stop mid-corridor).
+# Measure each robot at both walls with hebbian_pose_calibration.py <hostname>. A hostname
+# not listed here falls back to the shared CORRIDOR_Y_MIN/MAX.
 CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # v scales linearly from 1.0 (at this distance or farther from either wall) to 0.0 (at
 # the wall) over this margin. Tune to your corridor's real width and the robot's real
