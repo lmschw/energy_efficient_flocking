@@ -248,7 +248,9 @@ STALE_POSE_TICK_THRESHOLD = 3
 CORRIDOR_Y_MIN = -1.804  # meters, sim-frame y (agents[:, 1]) -- measure with
 CORRIDOR_Y_MAX = 1.572   # hebbian_pose_calibration.py <hostname> (point-and-sample at
                          # each wall) and set BOTH before relying on this to prevent wall
-                         # strikes. RESET TO None (2026-09-23): the previous 0.327/1.229
+                         # strikes. RECALIBRATED (2026-09-26) against the current session's
+                         # corridor -- governor re-enabled. History: RESET TO None
+                         # (2026-09-23) because the previous 0.327/1.229
                          # values were stale from an earlier calibration session and no
                          # longer bracket the room's real y-range at all -- confirmed via
                          # real trial data showing every robot's actual sim_y around
