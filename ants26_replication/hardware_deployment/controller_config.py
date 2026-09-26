@@ -335,6 +335,44 @@ AGENT_SAFETY_CLAMP_INNER_GAP = 0.05   # gap [m] at which forward speed reaches z
 # overlap, not just reduced margin above contact.
 
 # =====================================================================================
+# --- Deployment-only obstacle-backoff reflex (NOT a trained genome behavior) ---------
+# =====================================================================================
+# Direct answer to the AGENT_SAFETY_CLAMP_INNER_GAP history above: that clamp only ever
+# scales v toward 0 as agents converge -- it has no way to make a deadlocked pair back
+# away from each other (the 2026-09-23 thymio-09/thymio-11 incident above). Tight
+# clustering is also a tracking problem on its own: OptiTrack rigid bodies solve worse
+# (or drop out entirely -- see pose_utils.py's stale-freeze/up-axis-outlier detectors,
+# both added after real dropout incidents) when robots' marker constellations are close
+# together, independent of any actual collision risk. This reflex reduces how long
+# robots spend clustered at all, rather than only reacting once they're already stuck:
+# if something has been sensed dead ahead for OBSTACLE_TRIGGER_TICKS straight, back
+# straight up for OBSTACLE_BACKOFF_TICKS; symmetrically, ease straight forward if
+# something is persistently dead behind. Gated on PERSISTENCE, not a single noisy tick,
+# same reasoning as STALE_POSE_TICK_THRESHOLD. Heading (w) is left completely untouched
+# -- same simplest-option tradeoff as the corridor governor: this only ever overrides v
+# while active, and composes with AGENT_SAFETY_CLAMP/corridor scaling applied afterward
+# in hebbian_swarm_experiment.py (a [0,1] scale can weaken the backoff but never flips
+# its sign, so a robot backing away never gets turned back around by those clamps).
+OBSTACLE_BACKOFF_ENABLED = True
+OBSTACLE_TRIGGER_DIST = -0.5    # front_d/back_d threshold, in sensor_model.py's
+                                # normalized units (-1.0=contact, +1.0=nothing sensed) --
+                                # more negative is more conservative (reacts only when
+                                # very close). Same quadrant reading hebbian_step already
+                                # consumes -- see hebbian_swarm_experiment.py's
+                                # _debug_front_d/_debug_back_d.
+OBSTACLE_TRIGGER_TICKS = 3      # consecutive ticks something must be persistently sensed
+                                # dead ahead/behind before the reflex engages (~1.5s at
+                                # CONTROL_TICK_SECONDS=0.5) -- matches
+                                # STALE_POSE_TICK_THRESHOLD's magnitude, for the same
+                                # "don't react to one noisy tick" reasoning.
+OBSTACLE_BACKOFF_SPEED = 0.05   # m/s, magnitude of the straight-line backoff/forward-ease
+                                # commanded while the reflex is active. Deliberately
+                                # small/slow -- this is a separation nudge, not an escape
+                                # maneuver.
+OBSTACLE_BACKOFF_TICKS = 4      # how many ticks the reflex holds once triggered (~2s)
+                                # before re-evaluating from scratch.
+
+# =====================================================================================
 # --- Simulated battery drainage (BATTERY_MODE == "simulated") ------------------------
 # Every constant below is copied verbatim from experiment/config.py's HEBBIAN_*/WAKE_*/
 # DRAG_*/BATTERY_* sections -- "the same battery drainage as the simulation" means using

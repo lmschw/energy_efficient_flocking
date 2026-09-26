@@ -52,6 +52,38 @@ def _corridor_speed_scale(y):
     return min(1.0, margin / cfg.CORRIDOR_SLOWDOWN_MARGIN_M)
 
 
+def _apply_obstacle_backoff(state, v, front_d, back_d):
+    """Deployment-only reflex -- see OBSTACLE_BACKOFF_* in controller_config.py for the
+    full rationale (direct answer to AGENT_SAFETY_CLAMP_INNER_GAP's deadlock history and
+    to OptiTrack tracking degrading when robots cluster tightly). `state` is the owning
+    HebbianSwarmExperiment instance -- reads/writes its _front_close_streak,
+    _back_close_streak, _backoff_ticks_remaining, _backoff_v. Returns the (possibly
+    overridden) v; w is never touched."""
+    if not cfg.OBSTACLE_BACKOFF_ENABLED:
+        return v
+
+    state._front_close_streak = (state._front_close_streak + 1
+                                  if front_d <= cfg.OBSTACLE_TRIGGER_DIST else 0)
+    state._back_close_streak = (state._back_close_streak + 1
+                                 if back_d <= cfg.OBSTACLE_TRIGGER_DIST else 0)
+
+    if state._backoff_ticks_remaining > 0:
+        state._backoff_ticks_remaining -= 1
+        return state._backoff_v
+
+    if state._front_close_streak >= cfg.OBSTACLE_TRIGGER_TICKS:
+        state._backoff_v = -cfg.OBSTACLE_BACKOFF_SPEED
+        state._backoff_ticks_remaining = cfg.OBSTACLE_BACKOFF_TICKS - 1
+        state._front_close_streak = 0
+        return state._backoff_v
+    if state._back_close_streak >= cfg.OBSTACLE_TRIGGER_TICKS:
+        state._backoff_v = cfg.OBSTACLE_BACKOFF_SPEED
+        state._backoff_ticks_remaining = cfg.OBSTACLE_BACKOFF_TICKS - 1
+        state._back_close_streak = 0
+        return state._backoff_v
+    return v
+
+
 def _agent_safety_speed_scale(agents, self_index):
     """Deployment-ENFORCED port of simulation_hebbian.py's _apply_safety_clamp() (agent-agent
     half only -- the wall half is _corridor_speed_scale() above, a separately-calibrated
@@ -123,6 +155,12 @@ class HebbianSwarmExperiment:
                                      # one-tick "delta" that instantly zeroes the battery.
         self._last_w = None         # commanded angular velocity that was actually active
                                      # over the interval since _prev_position was recorded.
+        # OBSTACLE_BACKOFF_* state (see controller_config.py and _apply_obstacle_backoff()
+        # above) -- persistence-tick counters and the active reflex's remaining duration/v.
+        self._front_close_streak = 0
+        self._back_close_streak = 0
+        self._backoff_ticks_remaining = 0
+        self._backoff_v = 0.0
         # wind_battery_model has no extra dependencies beyond numpy (already required
         # regardless of BATTERY_MODE), so it's imported unconditionally at the top of
         # this file -- no lazy-import/try-except needed here anymore.
@@ -226,6 +264,7 @@ class HebbianSwarmExperiment:
         _debug_right_d, _debug_left_d = float(x_in[4]), float(x_in[6])
 
         v, w, self.w1, self.w2, self.w3 = hebbian_step(x_in, self.w1, self.w2, self.w3, self.rules)
+        v = _apply_obstacle_backoff(self, v, _debug_front_d, _debug_back_d)
         if self_tracked:
             # min(), not product -- matches simulation_hebbian.py's own
             # vel[:,0] *= np.minimum(agent_scale, wall_scale) combination exactly: whichever
