@@ -43,6 +43,10 @@ parser.add_argument("--n-agents", type=int, nargs="+", default=[10],
 parser.add_argument("--empty-quadrant-zero", action="store_true",
                     help="Encode an empty sensor quadrant as (0, 0) instead of (+1, -1) -- see "
                          "config.HEBBIAN_EMPTY_QUADRANT_ZERO.")
+parser.add_argument("--resume", action="store_true",
+                    help="Checkpoint CMA-ES every generation and resume from an existing checkpoint "
+                         "in --output-dir. If stage 1's best genome is already saved there, stage 1 "
+                         "is skipped and stage 2 starts (or resumes) from it.")
 parser.add_argument("--seed", type=int, default=42)
 parser.add_argument("--wind-grid", type=int, default=50)
 parser.add_argument("--popsize", type=int, default=config.HEBBIAN_CMAES_POPSIZE)
@@ -66,13 +70,18 @@ np.random.seed(args.seed)
 plotter = FitnessPlotter(path=os.path.join(args.output_dir, "hebbian_fitness_curve.png"))
 
 genome = np.random.uniform(config.HEBBIAN_ABCD_BOUNDS[0], config.HEBBIAN_ABCD_BOUNDS[1], config.HEBBIAN_N_ABCD)
-genome = run_stage("walk_upwind", genome, plotter, args.popsize, args.maxiter_stage1,
-                    args.n_agents, args.n_repeats, args.seed, args.output_dir,
-                    max_battery=None, min_battery=None, nx=args.wind_grid, ny=args.wind_grid,
-                    use_battery_sensor=True, name_suffix="")
+stage1_path = os.path.join(args.output_dir, "hebbian_walk_upwind_best.npy")
+if args.resume and os.path.exists(stage1_path):
+    print(f"↳ Stage 1 already done -- loading {stage1_path} and skipping walk_upwind.")
+    genome = np.load(stage1_path)
+else:
+    genome = run_stage("walk_upwind", genome, plotter, args.popsize, args.maxiter_stage1,
+                        args.n_agents, args.n_repeats, args.seed, args.output_dir,
+                        max_battery=None, min_battery=None, nx=args.wind_grid, ny=args.wind_grid,
+                        use_battery_sensor=True, name_suffix="", checkpoint=args.resume)
 genome = run_stage("save_battery_avoid_all", genome, plotter, args.popsize, args.maxiter_stage2,
                     args.n_agents, args.n_repeats, args.seed, args.output_dir,
                     max_battery=None, min_battery=None, nx=args.wind_grid, ny=args.wind_grid,
-                    use_battery_sensor=True, name_suffix="")
+                    use_battery_sensor=True, name_suffix="", checkpoint=args.resume)
 plotter.close()
 print("2-stage training complete.")

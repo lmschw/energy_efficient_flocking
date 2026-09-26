@@ -26,6 +26,7 @@ which implement a different, stale 1680-parameter architecture (see hebbian_cont
 import argparse
 import json
 import os
+import pickle
 import sys
 
 import cma
@@ -85,7 +86,11 @@ def fitness_wrapper(genome):
 
 
 def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_base, output_dir,
-              max_battery, min_battery, nx, ny, use_battery_sensor, name_suffix):
+              max_battery, min_battery, nx, ny, use_battery_sensor, name_suffix, checkpoint=False):
+    """checkpoint=True pickles the CMA-ES state after every generation to
+    <output_dir>/hebbian_<stage><suffix>_checkpoint.pkl and, if that file already exists,
+    resumes from it instead of starting fresh from x0 (so a killed run loses at most one
+    generation). The file is deleted once the stage completes."""
     global active_stage, total_candidates, active_n_agents, active_n_repeats, active_seed_base
     global active_max_battery, active_min_battery, active_nx, active_ny, active_use_battery_sensor
 
@@ -103,15 +108,21 @@ def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_ba
     print(f"\n{'=' * 70}\n🧬 STAGE: {stage}  (wind_enabled={config.HEBBIAN_STAGE_WIND_ENABLED[stage]}, "
           f"battery_sensor={use_battery_sensor})\n{'=' * 70}")
 
-    es = cma.CMAEvolutionStrategy(x0, config.HEBBIAN_CMAES_SIGMA0, {
-        'popsize': popsize,
-        'maxiter': maxiter,
-        'bounds': list(config.HEBBIAN_ABCD_BOUNDS),
-    })
+    checkpoint_path = os.path.join(output_dir, f"hebbian_{stage}{name_suffix}_checkpoint.pkl")
     plotter.reset_run(title=f"stage: {stage}{name_suffix}")
-
-    gen = 0
-    fitness_history = []
+    if checkpoint and os.path.exists(checkpoint_path):
+        with open(checkpoint_path, "rb") as f:
+            state = pickle.load(f)
+        es, gen, fitness_history = state["es"], state["gen"], state["fitness_history"]
+        print(f"↳ Resuming '{stage}' from checkpoint at generation {gen}/{maxiter}.")
+    else:
+        es = cma.CMAEvolutionStrategy(x0, config.HEBBIAN_CMAES_SIGMA0, {
+            'popsize': popsize,
+            'maxiter': maxiter,
+            'bounds': list(config.HEBBIAN_ABCD_BOUNDS),
+        })
+        gen = 0
+        fitness_history = []
     while not es.stop():
         gen += 1
         current_candidate_reset()
@@ -122,6 +133,10 @@ def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_ba
         fitness_history.append(float(min(fitness_values)))
         sys.stdout.write("\r")
         print(f"✅ Gen {gen:03d}/{maxiter} | Best Loss (neg eff): {min(fitness_values):.4f}")
+        if checkpoint:
+            with open(checkpoint_path + ".tmp", "wb") as f:
+                pickle.dump({"es": es, "gen": gen, "fitness_history": fitness_history}, f)
+            os.replace(checkpoint_path + ".tmp", checkpoint_path)  # atomic: never a half-written file
 
     best_genome = es.result[0]
     best_loss = float(es.result[1])
@@ -142,6 +157,8 @@ def run_stage(stage, x0, plotter, popsize, maxiter, n_agents, n_repeats, seed_ba
                    "wind_grid_nx": nx, "wind_grid_ny": ny,
                    "empty_quadrant_zero": config.HEBBIAN_EMPTY_QUADRANT_ZERO}, f, indent=2)
 
+    if checkpoint and os.path.exists(checkpoint_path):
+        os.remove(checkpoint_path)
     print(f"💾 Stage '{stage}' complete. Best efficiency: {-best_loss:.4f}. Saved {genome_name}")
     return best_genome
 
