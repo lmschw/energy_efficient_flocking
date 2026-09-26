@@ -244,8 +244,9 @@ STALE_POSE_TICK_THRESHOLD = 3
 # scaled down near a wall even if the robot happens to already be heading away from it --
 # simpler and strictly safer than trying to also read intent from heading, at the cost
 # of some unnecessary slowdown in that case.
-CORRIDOR_Y_MIN = None   # meters, sim-frame y (agents[:, 1]) -- measure with
-CORRIDOR_Y_MAX = None   # hebbian_pose_calibration.py <hostname> (point-and-sample at
+
+CORRIDOR_Y_MIN = -1.804  # meters, sim-frame y (agents[:, 1]) -- measure with
+CORRIDOR_Y_MAX = 1.572   # hebbian_pose_calibration.py <hostname> (point-and-sample at
                          # each wall) and set BOTH before relying on this to prevent wall
                          # strikes. RESET TO None (2026-09-23): the previous 0.327/1.229
                          # values were stale from an earlier calibration session and no
