@@ -372,6 +372,23 @@ OBSTACLE_BACKOFF_SPEED = 0.05   # m/s, magnitude of the straight-line backoff/fo
 OBSTACLE_BACKOFF_TICKS = 4      # how many ticks the reflex holds once triggered (~2s)
                                 # before re-evaluating from scratch.
 
+UNTRACKED_SAFE_V_CAP = 0.03     # m/s. hebbian_swarm_experiment.py._tick() applies this cap
+                                # to |v| whenever self_tracked is False, in place of the
+                                # normal corridor/agent-safety clamp (neither can be computed
+                                # without a real position). Confirmed real mechanism (2026-09):
+                                # robots colliding at full, unclamped speed -- tracking drops
+                                # out most often from exactly the tight-clustering situations
+                                # the agent-safety clamp exists to prevent, and losing our own
+                                # position also makes every neighbor read as "far away" to our
+                                # own sensing, so hebbian_step tends to command an even LESS
+                                # cautious v right when we can verify safety least. Set below
+                                # OBSTACLE_BACKOFF_SPEED (0.05) so if that reflex is also
+                                # active this cap is the one that binds -- moot in practice,
+                                # since _apply_obstacle_backoff() can't even fire while
+                                # untracked (front_d/back_d are sentinel-blind too), so this
+                                # cap is currently the only thing braking an untracked robot
+                                # at all.
+
 # =====================================================================================
 # --- Simulated battery drainage (BATTERY_MODE == "simulated") ------------------------
 # Every constant below is copied verbatim from experiment/config.py's HEBBIAN_*/WAKE_*/

@@ -272,6 +272,21 @@ class HebbianSwarmExperiment:
             # than compounding both into an even smaller scale.
             v *= min(_corridor_speed_scale(current_position[1]),
                      _agent_safety_speed_scale(agents, self_index))
+        else:
+            # CANNOT compute _agent_safety_speed_scale/_corridor_speed_scale without a real
+            # position -- self is at pose_utils.py's (1e4,1e4) sentinel, which also makes
+            # every OTHER agent read as "far away" to THIS robot's own sensing (see
+            # sensor_model.py), so hebbian_step tends to output an open-field v here, not a
+            # braked one. Un-tracked used to mean UNCLAMPED (full v straight to the
+            # motors) -- confirmed from real trial data as a real collision mechanism:
+            # tracking degrades/drops exactly when robots cluster tightly (marker
+            # occlusion -- see pose_utils.py's stale-freeze/up-axis-outlier detectors), so
+            # the moment we can least verify it's safe to keep going is the same moment
+            # this branch used to apply NO speed limit at all. Not knowing where we are is
+            # itself a reason to slow down, not a reason to skip the clamp -- cap to a
+            # slow crawl instead (direction/w still untouched, same as every other
+            # deployment-only reflex here).
+            v = max(-cfg.UNTRACKED_SAFE_V_CAP, min(cfg.UNTRACKED_SAFE_V_CAP, v))
         left, right = velocity_to_motor_targets(v, w)
         await self.robot.drive(left, right)
         self._last_w = w
