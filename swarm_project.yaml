@@ -51,6 +51,9 @@ experiments:
   hebbian_swarm:
     class: ants26_replication.hardware_deployment.hebbian_swarm_experiment.HebbianSwarmExperiment
     tracking: true   # required -- this is what makes the platform push OptiTrack poses at all
+  lj_baseline:
+    class: ants26_replication.hardware_deployment.lj_baseline_experiment.LJBaselineExperiment
+    tracking: true   # same reason as hebbian_swarm above
   calibrate_speed:
     class: ants26_replication.hardware_deployment.diagnostics.calibrate_speed_experiment.CalibrateSpeedExperiment
     tracking: true

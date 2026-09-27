@@ -16,6 +16,7 @@ import numpy as np
 import controller_config as cfg
 from pose_utils import Pose
 from hebbian_swarm_experiment import HebbianSwarmExperiment
+from lj_baseline_experiment import LJBaselineExperiment
 
 
 class FakeRobot:
@@ -127,7 +128,48 @@ async def main():
     finally:
         cfg.BATTERY_MODE = "none"
 
+    await test_lj_baseline()
+
     print("\nAll checks passed.")
+
+
+async def test_lj_baseline():
+    """LJBaselineExperiment has no genome/weights, so most of the checks above don't
+    apply -- this instead focuses on the one failure mode specific to porting a
+    pairwise-force control law (as opposed to sensor_model.py's quadrant abstraction)
+    to real poses: pose_utils.poses_to_agents() places EVERY currently-untracked robot
+    at the identical (1e4, 1e4) sentinel, and losing tracking on 2+ robots at once is
+    routine on this rig -- confirmed as a real crash (division by zero -> NaN -> a
+    ValueError converting NaN to int in motor_utils.py) the first time this was tested,
+    fixed in _lj_velocity_command()'s R clamp. This is a regression test for that fix."""
+    print("\nTesting LJBaselineExperiment (no genome -- fixed control law)...")
+    hostnames = ["robot-a", "robot-b", "robot-c"]
+    poses = _make_test_poses()
+    robot = FakeRobot(poses)
+    config = {"hostnames": hostnames, "self_hostname": "robot-a"}
+    experiment = LJBaselineExperiment(robot=robot, config=config, logger=None)
+
+    for i in range(3):
+        robot.poses = {h: Pose(position=(p.position[0] + 1e-4 * i, p.position[1] - 1e-4 * i, p.position[2]),
+                                orientation=p.orientation)
+                       for h, p in poses.items()}
+        v, w, left, right = await experiment._tick()
+        assert v == v and w == w, "v/w must never be NaN"
+        assert abs(v) <= cfg.LINEAR_VEL_MAX + 1e-9, "v exceeded LINEAR_VEL_MAX"
+        assert abs(w) <= cfg.ANGULAR_VEL_MAX + 1e-9, "w exceeded ANGULAR_VEL_MAX"
+
+    print("  holding all 3 static past STALE_POSE_TICK_THRESHOLD, so every robot -- "
+          "including two OTHER agents, not just self -- shares the identical (1e4,1e4) "
+          "sentinel simultaneously (the specific case that used to crash)...")
+    for i in range(4):
+        v, w, left, right = await experiment._tick()
+        assert v == v and w == w, f"v/w went NaN once all agents shared the sentinel (tick {i})"
+    print(f"  -> survived: v={v:.4f}, w={w:.4f}")
+
+    await experiment.stop()
+    await experiment.run()
+    assert robot.stopped, "run() should call robot.stop() on exit"
+    print("  LJBaselineExperiment OK.")
 
 
 if __name__ == "__main__":

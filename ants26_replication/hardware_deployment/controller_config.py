@@ -484,3 +484,28 @@ DRAG_COEFFICIENT_AREA = 0.0045
 BATTERY_WHEEL_POWER_DIVISOR = 4.0
 BATTERY_MIN_DRAIN = 0.10
 BATTERY_DRAIN_SCALE = 2.0
+
+# =====================================================================================
+# --- LJ baseline (lj_baseline_experiment.py only -- unused by the Hebbian controller) -
+# =====================================================================================
+# The paper's Table 3 "standard collective motion baseline" (Fig. 5a's cluster-4 point):
+# a fixed, hand-designed LJ-spacing + heading-alignment + goal-pull control law, no
+# learning, no genome. Rule gains copied verbatim from hardware_transfer_test/final/
+# lj_baseline/paper_baseline_rules.json -- the exact baseline the paper's simulation
+# results were evaluated against -- not re-tuned for hardware. Geometry constants copied
+# verbatim from ants26_replication/experiment/config.py's R_CUT/R_MIN/R_ALIGN, for the
+# same reason MOTOR_UNITS_PER_MPS etc. above must match the Hebbian genome's own
+# training config. The velocity caps are NOT duplicated here -- LINEAR_VEL_MAX/
+# ANGULAR_VEL_MAX above are the same 0.2 m/s / pi/5 rad/s in experiment/config.py too,
+# so lj_baseline_experiment.py uses those directly.
+LJ_R0 = 0.7
+LJ_EPSILON = 1.0
+LJ_K_ALIGN = 0.0
+LJ_K_GOAL = 3.0
+LJ_K1 = 0.05
+LJ_K2 = 0.5
+LJ_U = 0.0
+
+LJ_R_CUT = 3.0
+LJ_R_MIN = 0.0
+LJ_R_ALIGN = 1.5
