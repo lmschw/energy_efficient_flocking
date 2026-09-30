@@ -69,8 +69,8 @@ New York University Abu Dhabi, Abu Dhabi, United Arab Emirates
 %
 \begin{abstract} % 150-250 words
 
-Groups of natural agents such as flocks of birds preserve energy by changing positions and thereby taking turns being exposed to the wind. We evolve an energy-aware controller for decentralized, memoryless, communication-free agents in a 2D environment. Our results show that being aware of neighbours' range and bearing, a digital compass and the battery level is enough to produce emergent reconfigurations akin to those observed in natural groups: in a swarm of 20 robots, the robot at the exposed front changes about ten times per minute, almost five times as often as in a traditional flocking baseline model.  On the real robots, at a smaller swarm size of 5 and 10 robots, the largest arena-limited swarm we could test in hardware, the evolved controllers also show more reciprocal front-back turn-taking than the baseline, a distinction not predicted by simulation at that size.
-We validate our model in simulation and real Thymio-II robots. In simulation with 20 robots, the evolved controller travels more than twice as far as the baseline before the first robot runs out of battery, while also retaining more battery. This advantage depends on swarm size: it appears only from about 13 robots upwards, and in small swarms the baseline performs better. For the real robots, we evolve a second controller under an additional training-time speed clamp intended to make it safer to deploy; it still travels $59\%$ further than the baseline in simulation.
+Groups of natural agents such as flocks of birds preserve energy by changing positions and thereby taking turns being exposed to the wind. We evolve an energy-aware controller for decentralized, memoryless, communication-free agents in a 2D environment. Our results show that being aware of neighbours' range and bearing, a digital compass and the battery level is enough to produce emergent reconfigurations akin to those observed in natural groups: in a swarm of 20 robots, the robot at the exposed front changes about ten times per minute, almost five times as often as in a traditional flocking baseline model.  On the real robots, at a smaller swarm size of 5 and 10 robots, the largest arena-limited swarm we could test in hardware, the evolved controller also shows more reciprocal front-back turn-taking than the baseline, a distinction not predicted by simulation at that size.
+We validate our model in simulation and real Thymio-II robots. In simulation with 20 robots, the evolved controller travels more than twice as far as the baseline before the first robot runs out of battery, while also retaining more battery. This advantage depends on swarm size: it appears only from about 13 robots upwards, and in small swarms the baseline performs better.
 
 \end{abstract}
 %
@@ -91,7 +91,7 @@ Formation reconfiguration is an active field in multi-robot systems but has not 
 Yang et al. (2016)\cite{Yang2016} use MPC and achieve V-formation by optimizing over velocity matching between agents, clear view, and upwash benefit, in both centralized and decentralized frameworks. Roy et al. (2020)\cite{Roy2020} optimize a similar cost function and propose a learning based framework that combines MPC with DNC as a teacher-learner pair. Although these works were able to achieve the V-shaped flocking pattern using simple local rules, dynamic formation reconfiguration is missing from them. In addition, they required full knowledge of the aerodynamic landscape. Instead, a greedy leading/trailing replacement heuristic was proposed by Mirzaeinia et al. (2019)\cite{Mirzaeinia2019} to achieve dynamic formation reconfiguration using battery thresholds. Then, Liu et. al. (2024)\cite{Liu2024}\cite{2Liu2024} frame the same issue as an optimization problem but require the energetic cost of the positions as input. However, both works assumed particular fixed patterns, such as the V-formation, and solved dynamic position assignment within the confines of these formations. Also, they took advantage of global communication between members.
 
 In this work, we address the problem of energy-efficient collective motion by evolving a controller for simple, memory-less robots in a 2D environment with uniform wind. The wind as well as the motion drains the battery and the group can only move while all of the robots still have battery.
-We use an existing evolutionary swarm robotics framework first proposed in~\cite{vandiggelen2025emergentheterogeneousswarmcontrol}. Our contribution lies in applying this framework to a problem that has only been studied by~\cite{mahdavi2026energy} for far: Using only range and bearing sensors and a battery monitoring sensor, travel as far as possible as a group. The robots cannot sense the wind that contributes to the battery being drained nor do they have any information about the state of the other robots. We show that this is enough for dynamic reconfiguration to emerge and this strategy allows the group to travel further than a traditional flocking baseline model in line with the findings in~\cite{mahdavi2026energy}. We extend~\cite{mahdavi2026energy} by evolving the controller with a two-stage curriculum instead of using three stages. Furthermore, we investigate the addition of a speed clamp during training with the intention of making deployment on real robots safer. Additionally, we validate our findings on real robots. we quantify the reconfiguration with leadership metrics from studies of bird flocks. We also show that the advantage depends on the size of the swarm: controllers evolved with 20 robots outperform the baseline only in large swarms.  
+We use an existing evolutionary swarm robotics framework first proposed in~\cite{vandiggelen2025emergentheterogeneousswarmcontrol}. Our contribution lies in applying this framework to a problem that has only been studied by~\cite{mahdavi2026energy} for far: Using only range and bearing sensors and a battery monitoring sensor, travel as far as possible as a group. The robots cannot sense the wind that contributes to the battery being drained nor do they have any information about the state of the other robots. We show that this is enough for dynamic reconfiguration to emerge and this strategy allows the group to travel further than a traditional flocking baseline model in line with the findings in~\cite{mahdavi2026energy}. We extend~\cite{mahdavi2026energy} by evolving the controller with a two-stage curriculum instead of using three stages. Additionally, we validate our findings on real robots. we quantify the reconfiguration with leadership metrics from studies of bird flocks. We also show that the advantage depends on the size of the swarm: controllers evolved with 20 robots outperform the baseline only in large swarms.  
 
 
 This paper is organised as follows: Section~\ref{sec:methodology} presents the methodology and metrics, Section~\ref{sec:EXp_Setup} introduces the simulation environment and the setup for the real robot experiments as well as the model of the battery drainage. Subsequently, Section~\ref{sec:Exp:Results} presents our findings and finally, Section~\ref{sec:Conclusion} summarises our findings and draws conclusions from them.
@@ -196,20 +196,6 @@ In this paper, we follow a curriculum of two stages for the evolution to allow a
 
 Since the agents do not have a wind sensor, the fitness rewards moving against the wind by rewarding the direction, i.e. heading to the left. This ensures that saving battery by moving with the wind, i.e. to the right, is punished from the start by having a negative impact on the fitness. In Stage 2, the fitness combines distance, average remaining battery, and penalties on both wall collisions and inter-robot collisions. The walls are placed to confine agents within a wide horizontal corridor. Stage 1 lasts $100$ generations and Stage 2 lasts $200$ generations. Compared with~\cite{mahdavi2026energy}, this curriculum trains stage 1 with the wind enabled and merges that work's intermediate wall-collision-only stage into the final stage. Table \ref{tab:fitness_evolution} reports the precise expression of the fitness function used in each stage.
 
-\subsection{Safety Mechanisms for Hardware Transfer}
-\label{sec:safety}
-
-In simulation, robots may overlap; collisions are only counted and penalised. Real robots cannot, so for the hardware experiments we evolve a second controller with the same two-stage curriculum and training seed, from scratch, with three safety mechanisms active in every simulated time step. (i) A speed clamp scales down each robot's commanded forward speed as it approaches another robot or a wall, while leaving its turning untouched (see Equation~\ref{eq:clamp}, (ii) The collision distance used by the fitness is inflated by $1.3\times$ to $0.156$\,m, so the controller learns to keep a margin. (iii) After collisions have been counted, robots that still overlap are pushed apart by half of the overlap per pass, for up to two passes. 
-
-\begin{equation}
-v_i \leftarrow v_i \cdot \min\!\big(C(g^i_{\text{robot}};\,0.05, 0.30),\ C(g^i_{\text{wall}};\,0.02, 0.15)\big),
-\qquad
-C(g; g_{\text{in}}, g_{\text{out}}) = \operatorname{clip}\!\Big(\tfrac{g - g_{\text{in}}}{g_{\text{out}} - g_{\text{in}}},\,0,\,1\Big),
-\label{eq:clamp}
-\end{equation}
-where $g$ is the gap in metres between robot surfaces, or between the robot and the wall. Adding the clamp during evolution ensures that the agents have the opportunity to learn to avoid collisions instead of disturbing the learned behaviour. Simulation results use the controller evolved without these mechanisms unless stated otherwise. The clamp only affects the y-axis since the x-axis is unbounded in simulation. In the deployment to hardware, the x-axis is bounded by a wall but this is not incorporated in the training.
-
-
 \subsection{Leadership Metrics}
 \label{sec:metrics}
 
@@ -307,18 +293,25 @@ This approximation of aerodynamic disturbances and energy consumption allows rea
 
 For the real-robot experiments we use Thymio-II robots, each carrying a powerbank and a Raspberry Pi 5 running the controller. The controller runs at 2\,Hz, the same rate as the simulation step, because the Hebbian update is applied once per step and a faster rate would change its learning dynamics. The robots have no range-and-bearing sensor to match the simulated information. We therefore track every robot with an OptiTrack motion-capture system and compute the same ten inputs as in simulation from the tracked positions and headings. There is also no wind tunnel and no battery telemetry. Each robot's battery is therefore virtual: it is computed online using the model of Section~\ref{sec:EXp_Setup}, from the robots' real tracked positions and the robot's measured speed. This preserves what the controller responds to: its own battery level and the shelter it gets from the others. The commanded $(v, \omega)$ is converted into wheel speeds through a calibrated conversion.
 
-For comparison, we deploy all three conditions reported in Section~\ref{sec:hardware_results} on hardware: the controller evolved with the safety mechanisms (Section~\ref{sec:safety}), the Stage~2 controller evolved without them, and the baseline. The deployment-time safety layer described in this section, the speed clamp and the infrared reflex, is identical across all three: only the genome (or, for the baseline, the hand-designed model) driving the robots differs between conditions. The speed clamp of Equation~\ref{eq:clamp} is enforced on the robots using the tracked gaps between them. The de-overlap push has no physical counterpart and is not used. In the first trials the training thresholds ($g_{\text{out}} = 0.30$\,m, $g_{\text{in}} = 0.05$\,m) led to deadlocks: tracking noise of several centimetres made neighbouring robots appear to overlap, which set both of their forward speeds to zero.  When robots are clustered closely, their speed is capped to a slow crawl. Second, an independent reflex reads the Thymio's own infrared proximity sensors directly (range about 12\,cm) and brakes a robot away from
-whatever is physically close in front of or behind it, regardless of tracking state; this still cannot detect a robot approaching from the side, since the Thymio has no side-facing sensors. The operators supervising every trial did not observe a collision in any of the 180 trials reported below.
+We deploy two conditions on hardware: the Stage~2 controller and the baseline. To prevent collisions, we apply a deployment-time safety layer identical across both conditions, so only the genome (or, for the baseline, the hand-designed model) driving the robots differs between them. First, a speed clamp scales down each robot's commanded forward speed as it approaches another robot or a wall, while leaving its turning untouched:
+\begin{equation}
+v_i \leftarrow v_i \cdot \min\!\big(C(g^i_{\text{robot}};\,0.05, 0.30),\ C(g^i_{\text{wall}};\,0.02, 0.15)\big),
+\qquad
+C(g; g_{\text{in}}, g_{\text{out}}) = \operatorname{clip}\!\Big(\tfrac{g - g_{\text{in}}}{g_{\text{out}} - g_{\text{in}}},\,0,\,1\Big),
+\label{eq:clamp}
+\end{equation}
+where $g$ is the gap in metres between robot surfaces, or between the robot and the wall; the clamp only affects the $y$-axis, since on hardware the $x$-axis is instead bounded only by a physical wall (Section~\ref{sec:hardware_results}). It is enforced using the tracked gaps between robots. In the first trials the deployment thresholds ($g_{\text{out}} = 0.30$\,m, $g_{\text{in}} = 0.05$\,m) led to deadlocks: tracking noise of several centimetres made neighbouring robots appear to overlap, which set both of their forward speeds to zero. When robots are clustered closely, their speed is capped to a slow crawl. Second, an independent reflex reads the Thymio's own infrared proximity sensors directly (range about 12\,cm) and brakes a robot away from
+whatever is physically close in front of or behind it, regardless of tracking state; this still cannot detect a robot approaching from the side, since the Thymio has no side-facing sensors. The operators supervising every trial did not observe a collision in any of the 120 trials reported below.
 
 We report results from five and ten robots in a $3.5\,\text{m}\times 6\,\text{m}$ arena, 30 trials per controller, each trial lasting approximately 100s.
 
 
-\begin{figure}[t]
+\rev{\begin{figure}[t]
     \centering
-    \includegraphics[width=\linewidth]{figures/fitness_curves_plain_seed123}
-    \caption[]{Fitness evolution during the two evolutionary stages: fitness of the best candidate in each generation, for the controller evolved without (orange) and with (blue) the safety mechanisms. Each stage has its own fitness function, so the two panels are not comparable. Stars mark the best candidate ever evaluated, which is the result of the stage.}
+    \includegraphics[width=\linewidth]{figures/fitness_curves_plain_seed123_no_clamp}
+    \caption[]{Fitness evolution during the two evolutionary stages: fitness of the best candidate in each generation. Stars mark the best candidate ever evaluated, which is the result of the stage.}
     \label{fig:fitness}
-\end{figure}
+\end{figure}}
 
 
 \begin{table}[t]
@@ -348,7 +341,7 @@ We report results from five and ten robots in a $3.5\,\text{m}\times 6\,\text{m}
   \subfloat[\label{fig:scatter_batt_dist}]{
     \begin{minipage}[t]{0.55\textwidth}
       \centering
-      \includegraphics[width=0.98\linewidth]{figures/paper_dist_vs_battery_n20}
+      \includegraphics[width=0.98\linewidth]{figures/paper_dist_vs_battery_n20_no_clamp}
     \end{minipage}
   }
   \subfloat[\label{fig:boxplot}]{
@@ -357,14 +350,14 @@ We report results from five and ten robots in a $3.5\,\text{m}\times 6\,\text{m}
       \includegraphics[width=0.95\linewidth]{figures/paper_battery_awareness_boxplot}
     \end{minipage}
   }
-\caption{(a) Travelled distance against remaining battery of 100 simulations of 20 robots with the best controller of stage 1 (1), Stage 2 (2), Stage 2 evolved with the safety mechanisms (3), and the baseline (4); ellipses show one standard deviation. (b) Wind speed experienced by the agents initialized at 50\% (left), and 100\% (right) over 100 simulations.}
+\caption{(a) Travelled distance against remaining battery of 100 simulations of 20 robots with the best controller of stage 1 (1), Stage 2 (2), and the baseline (3); ellipses show one standard deviation. (b) Wind speed experienced by the agents initialized at 50\% (left), and 100\% (right) over 100 simulations.}
   \label{fig:joined_scatter_box}
 \end{figure}
 
 
 \begin{table}[t]
 \centering
-\caption{Performance over 100 simulations of 20 robots (mean $\pm$ standard deviation). ``Both better'' counts the runs in which a controller travels further \emph{and} keeps more battery than the baseline on the same starting configuration. Differences from the baseline are tested with a two-sided Mann--Whitney U test: distance $p < 10^{-33}$ for all three controllers; battery $p = 3.3\times10^{-5}$ (Stage 2, higher), $p = 0.002$ (Stage 2 with safety mechanisms, lower) and $p = 0.49$ (stage 1, no difference).}
+\caption{Performance over 100 simulations of 20 robots (mean $\pm$ standard deviation). ``Both better'' counts the runs in which a controller travels further \emph{and} keeps more battery than the baseline on the same starting configuration. Differences from the baseline are tested with a two-sided Mann--Whitney U test: distance $p < 10^{-33}$ for both controllers; battery $p = 3.3\times10^{-5}$ (Stage 2, higher) and $p = 0.49$ (stage 1, no difference).}
 \label{tab:results_main}
 {
 \begin{tabular}{lccc}
@@ -373,7 +366,6 @@ We report results from five and ten robots in a $3.5\,\text{m}\times 6\,\text{m}
 \midrule
 Stage 1 & $12.32 \pm 0.74$ & $17.87 \pm 4.87$ & 42/100 \\
 Stage 2 & $19.78 \pm 2.05$ & $21.25 \pm 4.85$ & 69/100 \\
-Stage 2, safety mechanisms & $13.90 \pm 0.67$ & $16.11 \pm 3.49$ & 37/100 \\
 Baseline & $8.73 \pm 0.82$ & $18.31 \pm 4.70$ & -- \\
 \bottomrule
 \end{tabular}}
@@ -398,11 +390,11 @@ Agent with 50\% battery & 100 & 49.0 & 10.8 \\
 \section{Experimental Results}
 \label{sec:Exp:Results}
 
-Figure~\ref{fig:fitness} shows the fitness progression of the evolution of the ABCD-rules for a swarm of 20 agents across 300 generations (100 in stage 1 and 200 in Stage 2, as described in Section~\ref{sec:stages}). In Stage 2 the best fitness peaks after 115 generations without the safety mechanisms and after 82 generations with them, and declines afterwards. Because we keep the best candidate ever evaluated, the resulting controllers come from these peaks. After evolution, we evaluate the best controller obtained after each evolutionary stage and compare it with the baseline of Section~\ref{sec:baseline}. Its robots start with 150 battery units, the native scale of the baseline model, rather than 100. Since the drain per step is the same, they start with $1.5\times$ as much energy; all battery values are reported as a percentage of each controller's own starting charge.
+Figure~\ref{fig:fitness} shows the fitness progression of the evolution of the ABCD-rules for a swarm of 20 agents across 300 generations (100 in stage 1 and 200 in Stage 2, as described in Section~\ref{sec:stages}). In Stage 2 the best fitness peaks after 115 generations and declines afterwards. Because we keep the best candidate ever evaluated, the resulting controller comes from this peak. After evolution, we evaluate the best controller obtained after each evolutionary stage and compare it with the baseline of Section~\ref{sec:baseline}. Its robots start with 150 battery units, the native scale of the baseline model, rather than 100. Since the drain per step is the same, they start with $1.5\times$ as much energy; all battery values are reported as a percentage of each controller's own starting charge.
 
-Figure~\ref{fig:scatter_batt_dist}(a) and Table~\ref{tab:results_main} show the main results. Each point in Figure~\ref{fig:scatter_batt_dist} corresponds to one simulation of the best controller from stage 1 (cluster 1), Stage 2 (cluster 2), Stage 2 evolved with the safety mechanisms (cluster 3), or the baseline (cluster 4), plotted in terms of distance travelled versus the average battery level of the swarm members at the end of the simulation. Because stage 1 already trains with the wind on and rewards progress against it, the stage-1 controller already travels further than the baseline ($12.3$ vs.\ $8.7$\,m) while keeping a similar amount of battery. Stage 2, which additionally rewards remaining battery and penalises collisions, travels $19.8$\,m, $127\%$ further than the baseline, while also keeping more battery ($21.3\%$ vs.\ $18.3\%$). Both differences are significant (Mann-Whitney U, $p < 10^{-33}$ for distance and $p = 3.3\times10^{-5}$ for battery), and it beats the baseline on both measures at once in 69 of the 100 runs. The controller evolved with the safety mechanisms trades part of this gain for collision safety: it travels $13.9$\,m ($59\%$ further than the baseline) but keeps significantly less battery ($16.1\%$, $p = 0.002$), and beats the baseline on both measures in 37 of the 100 runs.
+Figure~\ref{fig:scatter_batt_dist}(a) and Table~\ref{tab:results_main} show the main results. Each point in Figure~\ref{fig:scatter_batt_dist} corresponds to one simulation of the best controller from stage 1 (cluster 1), Stage 2 (cluster 2), or the baseline (cluster 3), plotted in terms of distance travelled versus the average battery level of the swarm members at the end of the simulation. Because stage 1 already trains with the wind on and rewards progress against it, the stage-1 controller already travels further than the baseline ($12.3$ vs.\ $8.7$\,m) while keeping a similar amount of battery. Stage 2, which additionally rewards remaining battery and penalises collisions, travels $19.8$\,m, $127\%$ further than the baseline, while also keeping more battery ($21.3\%$ vs.\ $18.3\%$). Both differences are significant (Mann-Whitney U, $p < 10^{-33}$ for distance and $p = 3.3\times10^{-5}$ for battery), and it beats the baseline on both measures at once in 69 of the 100 runs.
 
-The advantage over the baseline depends strongly on the number of robots (Figure~\ref{fig:swarm_size}). The baseline covers about 25\,m with up to 8 robots, but its distance falls steadily as the swarm grows, to 8.8\,m at 20 robots. The evolved controller behaves the other way round: a single robot covers only about 1\,m, and the distance grows with the swarm size to about 20\,m. The controller overtakes the baseline in distance at 12 robots (at 14 with the safety mechanisms). With 12 or fewer robots it never beats the baseline on distance and battery at the same time in any of 30 runs per swarm size. With 13 robots it does so in 2 of 30 runs, and with 20 robots in 23 of 30. The controllers were evolved with 20 robots only, and they do not transfer to small swarms. Robots learn to rotate constantly when no neighbours are present in Stage 2 of the curriculum as exhibited in Figure~\ref{fig:Debunk_Compass}, thereby wasting battery on these rotations instead of covering more ground.
+The advantage over the baseline depends strongly on the number of robots (Figure~\ref{fig:swarm_size}). The baseline covers about 25\,m with up to 8 robots, but its distance falls steadily as the swarm grows, to 8.8\,m at 20 robots. The evolved controller behaves the other way round: a single robot covers only about 1\,m, and the distance grows with the swarm size to about 20\,m. The controller overtakes the baseline in distance at 12 robots. With 12 or fewer robots it never beats the baseline on distance and battery at the same time in any of 30 runs per swarm size. With 13 robots it does so in 2 of 30 runs, and with 20 robots in 23 of 30. The controllers were evolved with 20 robots only, and they do not transfer to small swarms. Robots learn to rotate constantly when no neighbours are present in Stage 2 of the curriculum as exhibited in Figure~\ref{fig:Debunk_Compass}, thereby wasting battery on these rotations instead of covering more ground.
 
 We argue that the strategies learned in Stage 2 rely primarily on local inter-robot interactions rather than the compass information. We contrast the controllers of stages 1 and 2 by testing them with 1 and 5 robots (Figure~\ref{fig:Debunk_Compass}). The stage 1 controller heads upwind whether it is alone or in a group: a single robot travels about 14\,m, heading straight for the wall and then following it upwind (Figure~\ref{fig:Debunk_Compass}, top left), and five robots move upwind spread out, each on its own path. The Stage 2 controller behaves very differently alone and in a group. A single robot turns in continuous circles and drifts only about a metre (top right), whereas five robots stay together, move upwind and repeatedly loop around one another, changing positions within the group (bottom right). The Stage 2 controller therefore depends on its neighbours to make progress at all: its behaviour is collective, arising from local interactions rather than from the compass alone.
 
@@ -415,10 +407,10 @@ Digging deeper into the effect of the battery-awareness, we compare the effect o
 
 
 We compute the metrics of Section~\ref{sec:metrics} over 30 simulations of 20 robots for each controller (Table~\ref{tab:leadership} and Figure~\ref{fig:leadership}). The Stage 2 controller changes its front robot about 10 times per minute, almost five times as often as the baseline
-(2.1 per minute); with the safety mechanisms it does so 4.8 times per minute. Each of these changes lasts at least 1.5\,s, so different robots genuinely take the exposed front position in turn (Figure~\ref{fig:leadership}(a). The raw count of front changes gives the opposite impression: the baseline's front robot changes almost 600 times per simulation, but only about 2\% of those changes persist, because its robots move nearly level with each other and the front identity flickers between them. For the Stage 2 controller, 65\% of the raw changes persist. For the same reason, front occupancy does not separate the controllers at 20 robots (0.84 for Stage 2 against 0.89 for the baseline): the flickering spreads the baseline's front time over many robots. With 10 robots, where the baseline flickers less, the difference is clear (0.90 for the Stage 2 controller against 0.26 for the baseline).
+(2.1 per minute). Each of these changes lasts at least 1.5\,s, so different robots genuinely take the exposed front position in turn (Figure~\ref{fig:leadership}(a). The raw count of front changes gives the opposite impression: the baseline's front robot changes almost 600 times per simulation, but only about 2\% of those changes persist, because its robots move nearly level with each other and the front identity flickers between them. For the Stage 2 controller, 65\% of the raw changes persist. For the same reason, front occupancy does not separate the controllers at 20 robots (0.84 for Stage 2 against 0.89 for the baseline): the flickering spreads the baseline's front time over many robots. With 10 robots, where the baseline flickers less, the difference is clear (0.90 for the Stage 2 controller against 0.26 for the baseline).
 
-The rotation is not balanced in the sense of Voelkl et al.~\cite{voelkl2015}. The reciprocity between front and back time is negative for both evolved controllers ($-0.26$ and $-0.19$), whereas it is close to zero for the baseline ($0.07$). Robots that spend more time at the front spend less time at the back, so over a whole simulation some robots stay towards the front and others towards the back, even though the front itself changes hands frequently. None of the controllers shows a strong turning hierarchy: the leadership entropy is at least 0.97 for all three, and the evolved controllers' hierarchies are only slightly
-steeper than the baseline's (0.63 and 0.62 against 0.55). The evolved behaviour is therefore best described as frequent exchange of the front position without fixed leaders, rather than as a strict rotation through all positions.
+The rotation is not balanced in the sense of Voelkl et al.~\cite{voelkl2015}. The reciprocity between front and back time is negative for the evolved controller ($-0.26$), whereas it is close to zero for the baseline ($0.07$). Robots that spend more time at the front spend less time at the back, so over a whole simulation some robots stay towards the front and others towards the back, even though the front itself changes hands frequently. Neither controller shows a strong turning hierarchy: the leadership entropy is at least 0.97 for both, and the evolved controller's hierarchy is only slightly
+steeper than the baseline's (0.63 against 0.55). The evolved behaviour is therefore best described as frequent exchange of the front position without fixed leaders, rather than as a strict rotation through all positions.
 
 \begin{table}[t]
 \centering
@@ -426,23 +418,23 @@ steeper than the baseline's (0.63 and 0.62 against 0.55). The evolved behaviour 
 \label{tab:leadership}
 % Widened-margin fix: shrunk to \small so the table stays within the text width.
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{lcc}
 \toprule
-\textbf{Metric} & \textbf{Stage 2} & \textbf{Stage 2, clamped} & \textbf{Baseline} \\
+\textbf{Metric} & \textbf{Stage 2} & \textbf{Baseline} \\
 \midrule
-Front changes per minute & 9.9 [9.5, 10.2] & 4.8 [3.5, 5.6] & 2.1 [1.7, 2.5] \\
-Raw changes that persist [\%] & 65 [57, 68] & 38 [32, 45] & 2.1 [1.8, 2.6] \\
-Front occupancy entropy & 0.84 [0.81, 0.88] & 0.42 [0.36, 0.51] & 0.89 [0.88, 0.91] \\
-Reciprocity $r$ & $-0.26$ [$-0.34$, $-0.21$] & $-0.19$ [$-0.23$, $-0.14$] & 0.07 [$-0.04$, 0.19] \\
-Hierarchy entropy & 0.98 [0.97, 0.98] & 0.98 [0.98, 0.99] & 0.99 [0.99, 0.99] \\
-Hierarchy steepness & 0.63 [0.55, 0.69] & 0.62 [0.54, 0.67] & 0.55 [0.50, 0.59] \\
+Front changes per minute & 9.9 [9.5, 10.2] & 2.1 [1.7, 2.5] \\
+Raw changes that persist [\%] & 65 [57, 68] & 2.1 [1.8, 2.6] \\
+Front occupancy entropy & 0.84 [0.81, 0.88] & 0.89 [0.88, 0.91] \\
+Reciprocity $r$ & $-0.26$ [$-0.34$, $-0.21$] & 0.07 [$-0.04$, 0.19] \\
+Hierarchy entropy & 0.98 [0.97, 0.98] & 0.99 [0.99, 0.99] \\
+Hierarchy steepness & 0.63 [0.55, 0.69] & 0.55 [0.50, 0.59] \\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{figures/paper_leadership_n20}
+  \includegraphics[width=\linewidth]{figures/paper_leadership_n20_no_clamp}
   \caption{Front-position changes with 20 robots. (a, b) Which robot is at the front over time in one simulation, after discarding spells shorter than 1.5\,s, for the stage-2 controller and the baseline; note the different time axes. (c) Front-position changes per minute and (d) share of raw front changes that persist for at least 1.5\,s, over 30 simulations per controller.}
   \label{fig:leadership}
 \end{figure}
@@ -452,19 +444,19 @@ Hierarchy steepness & 0.63 [0.55, 0.69] & 0.62 [0.54, 0.67] & 0.55 [0.50, 0.59] 
 
 In simulation, the controller does not outperform the baseline in swarms as small as those we can run on real robots (Figure~\ref{fig:swarm_size}). The real-robot experiments therefore test whether the evolved controller transfers from simulation to hardware, not whether it beats the baseline. In fact, we do not focus on the distance travelled nor on the battery levels since the wind drag remains simulated even in hardware. Instead, we focus on the turn-taking behaviour transfer. 
 
-We evaluate Stage~2, Stage~2 with the safety mechanisms, and the baseline under the protocol of Section~\ref{sec:hardware_setup}, in an arena well below the $10\,\text{m}$ wide arena the controllers were evolved in. OptiTrack tracking of individual robots is intermittent at this range and drops out for extended periods when robots are close together, so we restrict the leadership metrics of Section~\ref{sec:metrics} to the longest window in each trial during which all five robots are tracked without interruption (at least 10\,s). Unlike simulation, where an episode ends once any robot's battery is depleted, each real trial runs for a fixed duration of approximately 100\,s regardless of battery state; the virtual battery drains smoothly over this time (from full charge to $77\%$ and $75\%$ remaining on average for Stage~2 with and without the safety mechanisms respectively, never depleting), confirming the online model of Section~\ref{sec:hardware_setup} produces plausible drainage from real tracked motion, but the real trials are consequently too short to say anything about the battery-depletion endpoint simulation results are measured at.
+\rev{We evaluate Stage~2 and the baseline under the protocol of Section~\ref{sec:hardware_setup}, in an arena well below the $10\,\text{m}$ wide arena the controllers were evolved in. OptiTrack tracking of individual robots is intermittent at this range and drops out for extended periods when robots are close together, so we restrict the leadership metrics of Section~\ref{sec:metrics} to the longest window in each trial during which all five robots are tracked without interruption (at least 10\,s). Unlike simulation, where an episode ends once any robot's battery is depleted, each real trial runs for a fixed duration of approximately 100\,s regardless of battery state; the virtual battery drains smoothly over this time (from full charge to $75\%$ remaining on average, never depleting), confirming the online model of Section~\ref{sec:hardware_setup} produces plausible drainage from real tracked motion, but the real trials are consequently too short to say anything about the battery-depletion endpoint simulation results are measured at.
 
-Tables~\rev{\ref{tab:leadership_hardware_hw} and \ref{tab:leadership_hardware_sim}} and Figures~\ref{fig:hardware_traj_stage2} and \ref{fig:hardware_traj_stage2_clamped} compare the real trajectories against a simulation of the same controller and swarm size. The core result of Section~\ref{sec:leadership_results} replicates: the front position changes hands frequently on real hardware for all three conditions (30.0, 36.2, and 33.8 changes per minute for Stage~2 with and without the safety mechanisms and the baseline respectively), markedly more often than in simulation (7.2, 19.5, and 0.7 changes per minute respectively), and front-occupancy and hierarchy entropy remain high, so no single robot dominates the front. The gap is by far the largest for the baseline: with $k_{\text{align}}=0$ (Table~\ref{tab:baseline_params}) its simulated dynamics settle into one stable spacing/goal-pull formation that essentially never reshuffles (front-occupancy entropy $0.03$, one robot leading almost the entire episode), while the same controller on real hardware reshuffles constantly (entropy $0.62$, Figures~\ref{fig:hardware_baseline_handoff_timeline} and \ref{fig:hardware_baseline_switch_event_raster}) tracking noise and imperfect execution appear to perturb an otherwise-static ordering far more than they perturb the two learned controllers, which are already reshuffling substantially in simulation. We cannot fully separate a genuine increase in turn-taking frequency at this scale from OptiTrack position noise flipping the front rank more readily when robots are close together, which Section~\ref{sec:metrics}'s persistence filter only partly controls for; the same caveat applies to the reciprocity result below.
+Tables~\ref{tab:leadership_hardware_hw} and \ref{tab:leadership_hardware_sim} and Figure~\ref{fig:hardware_traj_stage2} compare the real trajectories against a simulation of the same controller and swarm size. The core result of Section~\ref{sec:leadership_results} replicates: the front position changes hands frequently on real hardware for both conditions (36.2 and 33.8 changes per minute for Stage~2 and the baseline respectively), markedly more often than in simulation (19.5 and 0.7 changes per minute respectively), and front-occupancy and hierarchy entropy remain high, so no single robot dominates the front. The gap is by far the largest for the baseline: with $k_{\text{align}}=0$ (Table~\ref{tab:baseline_params}) its simulated dynamics settle into one stable spacing/goal-pull formation that essentially never reshuffles (front-occupancy entropy $0.03$, one robot leading almost the entire episode), while the same controller on real hardware reshuffles constantly (entropy $0.62$, Figures~\ref{fig:hardware_baseline_handoff_timeline} and \ref{fig:hardware_baseline_switch_event_raster}) tracking noise and imperfect execution appear to perturb an otherwise-static ordering far more than they perturb the learned controller, which is already reshuffling substantially in simulation. We cannot fully separate a genuine increase in turn-taking frequency at this scale from OptiTrack position noise flipping the front rank more readily when robots are close together, which Section~\ref{sec:metrics}'s persistence filter only partly controls for; the same caveat applies to the reciprocity result below.
 
-Two results differ from the simulated distribution. First, the reciprocity between front and back time is negative in simulation for all three conditions (Table~\rev{\ref{tab:leadership_hardware_sim}}). Unlike the other metrics above, which are restricted to the single longest uninterrupted tracking window per trial, reciprocity instead pools every (robot, trial) pair over gap-interpolated tracking windows (short OptiTrack dropouts bridged by interpolation) into a single correlation with its own significance test (see the table's note). Hardware reciprocity is significantly positive for Stage~2 ($r=+0.39$, $p=8\times10^{-7}$, $N=150$) and not significantly different from zero for Stage~2 with the safety mechanisms ($r=+0.12$, $p=0.20$, $N=120$). For Stage~2 at least, robots that spend more time at the front also spend more time at the back, rather than settling into separate front-leaning and back-leaning roles. The baseline does not show this reversal: its reciprocity is significantly negative on both hardware ($r=-0.23$, $p=9\times10^{-3}$, $N=130$) and in simulation ($r=-0.28$, $p=5\times10^{-4}$), the one condition of the three where hardware confirms rather than contradicts the simulated sign. Second, front-occupancy entropy reverses direction between the two controllers: for Stage~2 it is lower on hardware than in simulation ($0.76$ vs.\ $0.92$), but for Stage~2 with the safety mechanisms it is higher on hardware ($0.77$ vs.\ $0.54$; Figure~\ref{fig:hardware_leadership_stage2_clamped}). On the real robots, the safety-mechanism controller rotates the front position more evenly than its own simulated counterpart does.
+Two results differ from the simulated distribution. First, the reciprocity between front and back time is negative in simulation for both conditions (Table~\ref{tab:leadership_hardware_sim}). Unlike the other metrics above, which are restricted to the single longest uninterrupted tracking window per trial, reciprocity instead pools every (robot, trial) pair over gap-interpolated tracking windows (short OptiTrack dropouts bridged by interpolation) into a single correlation with its own significance test (see the table's note). Hardware reciprocity is significantly positive for Stage~2 ($r=+0.39$, $p=8\times10^{-7}$, $N=150$). Robots that spend more time at the front also spend more time at the back, rather than settling into separate front-leaning and back-leaning roles. The baseline does not show this reversal: its reciprocity is significantly negative on both hardware ($r=-0.23$, $p=9\times10^{-3}$, $N=130$) and in simulation ($r=-0.28$, $p=5\times10^{-4}$), the one condition where hardware confirms rather than contradicts the simulated sign. Second, front-occupancy entropy for Stage~2 is lower on hardware than in simulation ($0.76$ vs.\ $0.92$).
 
-Overall, the qualitative claim that turn-taking occurs and no single robot dominates the front transfers to hardware for all three conditions, as does hierarchy structure (entropy and steepness); reciprocity and front-occupancy entropy do not transfer cleanly, and not in the same way as each other: reciprocity flips sign for the two learned controllers but not for the baseline, while front-occupancy entropy's relationship to its own simulated value differs in direction for each of the three conditions rather than following one consistent pattern.
+Overall, the qualitative claim that turn-taking occurs and no single robot dominates the front transfers to hardware for both conditions, as does hierarchy structure (entropy and steepness); reciprocity and front-occupancy entropy do not transfer cleanly: reciprocity flips sign for the learned controller but not for the baseline.
 
-Comparing the three conditions to each other on hardware, rather than each to its own simulation, isolates reciprocity as the one metric that distinguishes the learned controllers from the baseline. Hardware reciprocity is cleanly ordered, Stage~2 ($+0.39$) $>$ Stage~2 with the safety mechanisms ($+0.12$, not significant) $>$ baseline ($-0.23$), a separation not present in any other metric in Table~\rev{\ref{tab:leadership_hardware_hw}}: front changes per minute, front-occupancy entropy, and hierarchy entropy/steepness are all similar across the three conditions on real hardware. This ordering is not predicted by simulation at the same swarm size, where all three conditions are significantly negative, and the baseline is in fact the least negative of the three ($-0.28$, against $-0.40$ for Stage~2 and $-0.42$ for Stage~2 with the safety mechanisms), if anything suggesting the baseline is closer to reciprocal than the learned controllers are. Real hardware is therefore necessary, not merely confirmatory, for the claim that the evolved controllers achieve more reciprocal turn-taking than the hand-designed baseline: this distinction is invisible in simulation at this swarm size and only emerges once the controllers are run on physical robots. This is also the one result that resembles the biological finding this metric is modelled on: Voelkl et al.~\cite{voelkl2015} report a population-level reciprocity of $r=0.78$ (CI$_{95}$ $[0.42, 0.92]$) for leading/following in ibis V-formation flight, against their own randomized-association control of $r=0.27$ (CI$_{95}$ $[-0.24, 0.68]$). Stage~2 on hardware ($r=+0.39$, $p=8\times10^{-7}$) is the only result anywhere in this study, in simulation or on hardware, for any condition, with the same sign as that biological finding, and it clears the ibis paper's own chance-expectation baseline of $0.27$; every other result here (the clamped controller and the baseline on hardware, and all three conditions in simulation) is either not significantly different from zero or of the opposite sign.
+Comparing the two conditions to each other on hardware, rather than each to its own simulation, isolates reciprocity as the one metric that distinguishes the learned controller from the baseline. Hardware reciprocity is positive for Stage~2 ($+0.39$) and negative for the baseline ($-0.23$), a separation not present in any other metric in Table~\ref{tab:leadership_hardware_hw}: front changes per minute, front-occupancy entropy, and hierarchy entropy/steepness are all similar between the two conditions on real hardware. This is not predicted by simulation at the same swarm size, where both conditions are significantly negative, and the baseline is in fact less negative than Stage~2's simulated value ($-0.28$ vs.\ $-0.40$), if anything suggesting the baseline is closer to reciprocal than the learned controller is in simulation. Real hardware is therefore necessary, not merely confirmatory, for the claim that the evolved controller achieves more reciprocal turn-taking than the hand-designed baseline: this distinction is invisible in simulation at this swarm size and only emerges once the controller is run on physical robots. This is also the one result that resembles the biological finding this metric is modelled on: Voelkl et al.~\cite{voelkl2015} report a population-level reciprocity of $r=0.78$ (CI$_{95}$ $[0.42, 0.92]$) for leading/following in ibis V-formation flight, against their own randomized-association control of $r=0.27$ (CI$_{95}$ $[-0.24, 0.68]$). Stage~2 on hardware ($r=+0.39$, $p=8\times10^{-7}$) is the only result anywhere in this study, in simulation or on hardware, for any condition, with the same sign as that biological finding, and it clears the ibis paper's own chance-expectation baseline of $0.27$; every other result here (the baseline on hardware, and both conditions in simulation) is either not significantly different from zero or of the opposite sign.
 
-We repeated the pooled reciprocity analysis at $n=10$, using the same gap-interpolated tracking windows, for all three conditions (Tables~\rev{\ref{tab:leadership_hardware_hw} and \ref{tab:leadership_hardware_sim}}, second reciprocity row). The reversal found at $n=5$ partly replicates: Stage~2 hardware reciprocity remains significantly positive against a significantly negative simulated value ($N=60$ hardware, $N=300$ simulation), and Stage~2 with the safety mechanisms remains positive on hardware but not significant ($N=60$), as at $n=5$. The baseline, however, no longer shows a clearly negative hardware value at this swarm size, unlike at $n=5$ ($N=90$ hardware), while its simulated reciprocity stays significantly negative ($N=300$).
+We repeated the pooled reciprocity analysis at $n=10$, using the same gap-interpolated tracking windows, for both conditions (Tables~\ref{tab:leadership_hardware_hw} and \ref{tab:leadership_hardware_sim}, second reciprocity row). The reversal found at $n=5$ partly replicates: Stage~2 hardware reciprocity remains significantly positive against a significantly negative simulated value ($N=60$ hardware, $N=300$ simulation). The baseline, however, no longer shows a clearly negative hardware value at this swarm size, unlike at $n=5$ ($N=90$ hardware), while its simulated reciprocity stays significantly negative ($N=300$).
 
-We also observe both controllers spending a substantial fraction of each trial near one of the arena's walls along $y$, more than in the much larger simulated arena: the wall clamp of Eq.~\ref{eq:clamp} engages far more often at this scale than its simulated counterpart does in the $10\,\text{m}\times 10\,\text{m}$ arena, and it only reduces forward speed and does not alter heading, so a robot facing a wall can remain there for several seconds before turning away on its own. We did not retrain against the real arena's wall scale, so some of the discrepancies above, particularly the wall-dwelling behaviour itself, may reflect this mismatch rather than a property of the controller's learned strategy. Neither training nor deployment impacts speed along $x$ (Section~\ref{sec:safety}), and unlike the simulated arena this axis is not actually unbounded on the real robots, so a robot travelling far enough along it is only stopped by the physical wall.
+We also observe the Stage~2 controller spending a substantial fraction of each trial near one of the arena's walls along $y$, more than in the much larger simulated arena: the wall clamp of Eq.~\ref{eq:clamp} engages far more often at this scale than its simulated counterpart does in the $10\,\text{m}\times 10\,\text{m}$ arena, and it only reduces forward speed and does not alter heading, so a robot facing a wall can remain there for several seconds before turning away on its own. We did not retrain against the real arena's wall scale, so some of the discrepancies above, particularly the wall-dwelling behaviour itself, may reflect this mismatch rather than a property of the controller's learned strategy. Deployment does not impact speed along $x$ (Section~\ref{sec:hardware_setup}), and unlike the simulated arena this axis is not actually unbounded on the real robots, so a robot travelling far enough along it is only stopped by the physical wall.}
 
 \rev{% Rebuilt as two portrait tables (Hardware / Simulation) instead of one rotated
 % 7-column table, which still didn't fit the page width even rotated at \small.
@@ -475,17 +467,17 @@ We also observe both controllers spending a substantial fraction of each trial n
 \caption{Leadership metrics for real robots on \textbf{hardware}, at $n=5$ (all rows) and, for reciprocity, also at $n=10$ (second reciprocity row). Rows other than reciprocity report the median [interquartile range] across trials. Reciprocity is pooled across every (robot, trial) pair into a single Pearson correlation (Section~\ref{sec:hardware_results}); significance: $^{ns}p\geq0.05$, $^{*}p<0.05$, $^{**}p<0.01$, $^{***}p<0.001$. Exact $p$-values and pooled sample sizes $N$ are given in the main text. Compare against Table~\ref{tab:leadership_hardware_sim}.}
 \label{tab:leadership_hardware_hw}
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{lcc}
 \toprule
-\textbf{Metric} & \textbf{Stage 2} & \textbf{Stage 2, clamped} & \textbf{Baseline} \\
+\textbf{Metric} & \textbf{Stage 2} & \textbf{Baseline} \\
 \midrule
-Front changes per minute & 36.2 [27.9, 43.1] & 30.0 [25.4, 37.7] & 33.8 [23.7, 37.9] \\
-Raw changes that persist [\%] & 36 [32, 48] & 44 [30, 61] & 36 [28, 53] \\
-Front occupancy entropy & 0.76 [0.63, 0.85] & 0.77 [0.61, 0.85] & 0.62 [0.54, 0.75] \\
-Reciprocity $r$ ($n=5$) & $+0.39^{***}$ & $+0.12^{ns}$ & $-0.23^{**}$ \\
-Reciprocity $r$ ($n=10$) & $+0.41^{**}$ & $+0.16^{ns}$ & $+0.20^{ns}$ \\
-Hierarchy entropy & 0.86 [0.81, 0.95] & 0.85 [0.82, 0.92] & 0.87 [0.83, 0.94] \\
-Hierarchy steepness & 0.84 [0.70, 0.98] & 0.91 [0.79, 0.97] & 0.85 [0.70, 0.92] \\
+Front changes per minute & 36.2 [27.9, 43.1] & 33.8 [23.7, 37.9] \\
+Raw changes that persist [\%] & 36 [32, 48] & 36 [28, 53] \\
+Front occupancy entropy & 0.76 [0.63, 0.85] & 0.62 [0.54, 0.75] \\
+Reciprocity $r$ ($n=5$) & $+0.39^{***}$ & $-0.23^{**}$ \\
+Reciprocity $r$ ($n=10$) & $+0.41^{**}$ & $+0.20^{ns}$ \\
+Hierarchy entropy & 0.86 [0.81, 0.95] & 0.87 [0.83, 0.94] \\
+Hierarchy steepness & 0.84 [0.70, 0.98] & 0.85 [0.70, 0.92] \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -495,21 +487,19 @@ Hierarchy steepness & 0.84 [0.70, 0.98] & 0.91 [0.79, 0.97] & 0.85 [0.70, 0.92] 
 \caption{As Table~\ref{tab:leadership_hardware_hw}, for the matched \textbf{simulations}: the same swarm size and the same 30-seed sweep methodology as Table~\ref{tab:leadership}, run at $n=5$ (or $n=10$, second reciprocity row) rather than $n=20$.}
 \label{tab:leadership_hardware_sim}
 \small
-\begin{tabular}{lccc}
+\begin{tabular}{lcc}
 \toprule
-\textbf{Metric} & \textbf{Stage 2} & \textbf{Stage 2, clamped} & \textbf{Baseline} \\
+\textbf{Metric} & \textbf{Stage 2} & \textbf{Baseline} \\
 \midrule
-Front changes per minute & 19.5 [14.4, 24.1] & 7.2 [4.6, 11.4] & 0.7 [0.1, 2.0] \\
-Raw changes that persist [\%] & 49 [44, 51] & 43 [34, 55] & 32 [2, 100] \\
-Front occupancy entropy & 0.92 [0.86, 0.95] & 0.54 [0.41, 0.64] & 0.03 [0.00, 0.13] \\
-Reciprocity $r$ ($n=5$) & $-0.40^{***}$ & $-0.42^{***}$ & $-0.28^{***}$ \\
-Reciprocity $r$ ($n=10$) & $-0.37^{***}$ & ---\textsuperscript{\dag} & $-0.19^{**}$ \\
-Hierarchy entropy & 0.89 [0.81, 0.95] & 0.84 [0.78, 0.90] & 0.82 [0.79, 0.89] \\
-Hierarchy steepness & 0.79 [0.64, 0.94] & 0.93 [0.81, 1.01] & 0.89 [0.77, 1.00] \\
+Front changes per minute & 19.5 [14.4, 24.1] & 0.7 [0.1, 2.0] \\
+Raw changes that persist [\%] & 49 [44, 51] & 32 [2, 100] \\
+Front occupancy entropy & 0.92 [0.86, 0.95] & 0.03 [0.00, 0.13] \\
+Reciprocity $r$ ($n=5$) & $-0.40^{***}$ & $-0.28^{***}$ \\
+Reciprocity $r$ ($n=10$) & $-0.37^{***}$ & $-0.19^{**}$ \\
+Hierarchy entropy & 0.89 [0.81, 0.95] & 0.82 [0.79, 0.89] \\
+Hierarchy steepness & 0.79 [0.64, 0.94] & 0.89 [0.77, 1.00] \\
 \bottomrule
 \end{tabular}
-
-\footnotesize\textsuperscript{\dag}Not separately reported at $n=10$; the text states this condition's simulated reciprocity remains negative, comparable to its $n=5$ value ($-0.42$).
 \end{table}}
 
 % Trimmed for length (see review notes): the two 30-seed-sweep sanity-check
@@ -526,19 +516,9 @@ Hierarchy steepness & 0.79 [0.64, 0.94] & 0.93 [0.81, 1.01] & 0.89 [0.77, 1.00] 
   \label{fig:hardware_traj_stage2}
 \end{figure}
 
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\linewidth]{figures/hardware_trajectories_stage2_clamped}
-  \caption{As Figure~\ref{fig:hardware_traj_stage2}, for Stage 2 with the safety mechanisms, the controller actually deployed on the robots.}
-  \label{fig:hardware_traj_stage2_clamped}
-\end{figure}
-
-\begin{figure}[t]
-  \centering
-  \includegraphics[width=\linewidth]{figures/hardware_leadership_stage2_clamped}
-  \caption{Leadership metrics of Tables~\rev{\ref{tab:leadership_hardware_hw} and \ref{tab:leadership_hardware_sim}} for Stage 2 with the safety mechanisms: each real trial (orange) against the single matched simulation (blue diamond).}
-  \label{fig:hardware_leadership_stage2_clamped}
-\end{figure}
+% NOTE (no-clamp version): the trajectory and leadership-scatter figures for the
+% "Stage 2, clamped" controller (originally here) are removed entirely, since they
+% were exclusively about that now-removed condition.
 
 \begin{figure}[t]
   \centering
@@ -557,8 +537,8 @@ Hierarchy steepness & 0.79 [0.64, 0.94] & 0.93 [0.81, 1.01] & 0.89 [0.77, 1.00] 
 
 \begin{figure}[t]
   \centering
-  \includegraphics[width=\linewidth]{figures/n_agents_sweep_distance_battery_plain_seed123}
-  \caption{Distance (left) and remaining battery (right) against swarm size, mean $\pm$ one standard deviation over 30 simulations per size, for the baseline (green) and the stage-2 controller evolved without (orange) and with (blue) the safety mechanisms. Both controllers were evolved with 20 robots.}
+  \includegraphics[width=\linewidth]{figures/n_agents_sweep_distance_battery_plain_seed123_no_clamp}
+  \caption{Distance (left) and remaining battery (right) against swarm size, mean $\pm$ one standard deviation over 30 simulations per size, for the baseline (green) and the Stage~2 controller (orange). The Stage~2 controller was evolved with 20 robots.}
   \label{fig:swarm_size}
 \end{figure}
 
@@ -578,7 +558,7 @@ Hierarchy steepness & 0.79 [0.64, 0.94] & 0.93 [0.81, 1.01] & 0.89 [0.77, 1.00] 
 \section{Conclusion}
 \label{sec:Conclusion}
 
-Taking inspiration from natural collectives such as bird flocks, we have investigated whether battery-awareness combined with neighbour sensing is sufficient for a swarm of simulated agents and real robots to discover the turn-taking strategy that those natural flocks often employ to reduce the effect of wind exposure on the energy level. Our results show that this strategy indeed emerges without including turn-taking or a wind sensor in the fitness function.  With 20 robots, the resulting controller travelled $127\%$ further on average than a flocking baseline while also keeping more battery, and a version evolved with an additional speed clamp intended for real-robot deployment still travelled $59\%$ further. This advantage only appears in large swarms: with 12 or fewer robots the baseline performs better, and a single robot with the evolved controller hardly travels any distance along the x-axis but moves in circles. In the evolved swarm the front position changes hands about ten times per minute, almost five times as often as in the baseline, although robots do not cycle evenly between front and back. On real robots at a smaller swarm size, the evolved controllers show more reciprocal turn-taking than the baseline, individuals that lead also follow, unlike the baseline's real robots or any of the three conditions in simulation at that size. This distinction only appears on hardware, not in simulation. While these results are promising, they are heavily dependent on the swarm size. Future work should investigate how this limitation can be mitigated. In addition, a comparison of the battery-awareness with other information sources such as an actual wind sensor should be undertaken. Further hardware validation in a bigger arena that would fit a bigger swarm size would also be beneficial to see if the patterns reported for the hardware would also hold at larger swarm sizes.
+Taking inspiration from natural collectives such as bird flocks, we have investigated whether battery-awareness combined with neighbour sensing is sufficient for a swarm of simulated agents and real robots to discover the turn-taking strategy that those natural flocks often employ to reduce the effect of wind exposure on the energy level. Our results show that this strategy indeed emerges without including turn-taking or a wind sensor in the fitness function.  With 20 robots, the resulting controller travelled $127\%$ further on average than a flocking baseline while also keeping more battery. This advantage only appears in large swarms: with 12 or fewer robots the baseline performs better, and a single robot with the evolved controller hardly travels any distance along the x-axis but moves in circles. In the evolved swarm the front position changes hands about ten times per minute, almost five times as often as in the baseline, although robots do not cycle evenly between front and back. On real robots at a smaller swarm size, the evolved controller shows more reciprocal turn-taking than the baseline, individuals that lead also follow, unlike the baseline's real robots or either condition in simulation at that size. This distinction only appears on hardware, not in simulation. While these results are promising, they are heavily dependent on the swarm size. Future work should investigate how this limitation can be mitigated. In addition, a comparison of the battery-awareness with other information sources such as an actual wind sensor should be undertaken. Further hardware validation in a bigger arena that would fit a bigger swarm size would also be beneficial to see if the patterns reported for the hardware would also hold at larger swarm sizes.
 
 
 \begin{credits}
