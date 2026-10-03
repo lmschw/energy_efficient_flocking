@@ -306,12 +306,12 @@ whatever is physically close in front of or behind it, regardless of tracking st
 We report results from five and ten robots in a $3.5\,\text{m}\times 6\,\text{m}$ arena, 30 trials per controller, each trial lasting approximately 100s.
 
 
-\rev{\begin{figure}[t]
+\begin{figure}[t]
     \centering
     \includegraphics[width=\linewidth]{figures/fitness_curves_plain_seed123_no_clamp}
     \caption[]{Fitness evolution during the two evolutionary stages: fitness of the best candidate in each generation. Stars mark the best candidate ever evaluated, which is the result of the stage.}
     \label{fig:fitness}
-\end{figure}}
+\end{figure}
 
 
 \begin{table}[t]
@@ -416,7 +416,6 @@ steeper than the baseline's (0.63 against 0.55). The evolved behaviour is theref
 \centering
 \caption{Leadership metrics for 20 robots, median [interquartile range] over 30 simulations. All differences from the baseline are significant (Mann-Whitney U, $p < 0.004$).}
 \label{tab:leadership}
-% Widened-margin fix: shrunk to \small so the table stays within the text width.
 \small
 \begin{tabular}{lcc}
 \toprule
@@ -444,7 +443,7 @@ Hierarchy steepness & 0.63 [0.55, 0.69] & 0.55 [0.50, 0.59] \\
 
 In simulation, the controller does not outperform the baseline in swarms as small as those we can run on real robots (Figure~\ref{fig:swarm_size}). The real-robot experiments therefore test whether the evolved controller transfers from simulation to hardware, not whether it beats the baseline. In fact, we do not focus on the distance travelled nor on the battery levels since the wind drag remains simulated even in hardware. Instead, we focus on the turn-taking behaviour transfer. 
 
-\rev{We evaluate Stage~2 and the baseline under the protocol of Section~\ref{sec:hardware_setup}, in an arena well below the $10\,\text{m}$ wide arena the controllers were evolved in. OptiTrack tracking of individual robots is intermittent at this range and drops out for extended periods when robots are close together, so we restrict the leadership metrics of Section~\ref{sec:metrics} to the longest window in each trial during which all five robots are tracked without interruption (at least 10\,s). Unlike simulation, where an episode ends once any robot's battery is depleted, each real trial runs for a fixed duration of approximately 100\,s regardless of battery state; the virtual battery drains smoothly over this time (from full charge to $75\%$ remaining on average, never depleting), confirming the online model of Section~\ref{sec:hardware_setup} produces plausible drainage from real tracked motion, but the real trials are consequently too short to say anything about the battery-depletion endpoint simulation results are measured at.
+We evaluate Stage~2 and the baseline under the protocol of Section~\ref{sec:hardware_setup}, in an arena well below the $10\,\text{m}$ wide arena the controllers were evolved in. OptiTrack tracking of individual robots is intermittent at this range and drops out for extended periods when robots are close together, so we restrict the leadership metrics of Section~\ref{sec:metrics} to the longest window in each trial during which all five robots are tracked without interruption (at least 10\,s). Unlike simulation, where an episode ends once any robot's battery is depleted, each real trial runs for a fixed duration of approximately 100\,s regardless of battery state; the virtual battery drains smoothly over this time (from full charge to $75\%$ remaining on average, never depleting), confirming the online model of Section~\ref{sec:hardware_setup} produces plausible drainage from real tracked motion, but the real trials are consequently too short to say anything about the battery-depletion endpoint simulation results are measured at.
 
 Tables~\ref{tab:leadership_hardware_hw} and \ref{tab:leadership_hardware_sim} and Figure~\ref{fig:hardware_traj_stage2} compare the real trajectories against a simulation of the same controller and swarm size. The core result of Section~\ref{sec:leadership_results} replicates: the front position changes hands frequently on real hardware for both conditions (36.2 and 33.8 changes per minute for Stage~2 and the baseline respectively), markedly more often than in simulation (19.5 and 0.7 changes per minute respectively), and front-occupancy and hierarchy entropy remain high, so no single robot dominates the front. The gap is by far the largest for the baseline: with $k_{\text{align}}=0$ (Table~\ref{tab:baseline_params}) its simulated dynamics settle into one stable spacing/goal-pull formation that essentially never reshuffles (front-occupancy entropy $0.03$, one robot leading almost the entire episode), while the same controller on real hardware reshuffles constantly (entropy $0.62$, Figures~\ref{fig:hardware_baseline_handoff_timeline} and \ref{fig:hardware_baseline_switch_event_raster}) tracking noise and imperfect execution appear to perturb an otherwise-static ordering far more than they perturb the learned controller, which is already reshuffling substantially in simulation. We cannot fully separate a genuine increase in turn-taking frequency at this scale from OptiTrack position noise flipping the front rank more readily when robots are close together, which Section~\ref{sec:metrics}'s persistence filter only partly controls for; the same caveat applies to the reciprocity result below.
 
@@ -456,15 +455,11 @@ Comparing the two conditions to each other on hardware, rather than each to its 
 
 We repeated the pooled reciprocity analysis at $n=10$, using the same gap-interpolated tracking windows, for both conditions (Tables~\ref{tab:leadership_hardware_hw} and \ref{tab:leadership_hardware_sim}, second reciprocity row). The reversal found at $n=5$ partly replicates: Stage~2 hardware reciprocity remains significantly positive against a significantly negative simulated value ($N=60$ hardware, $N=300$ simulation). The baseline, however, no longer shows a clearly negative hardware value at this swarm size, unlike at $n=5$ ($N=90$ hardware), while its simulated reciprocity stays significantly negative ($N=300$).
 
-We also observe the Stage~2 controller spending a substantial fraction of each trial near one of the arena's walls along $y$, more than in the much larger simulated arena: the wall clamp of Eq.~\ref{eq:clamp} engages far more often at this scale than its simulated counterpart does in the $10\,\text{m}\times 10\,\text{m}$ arena, and it only reduces forward speed and does not alter heading, so a robot facing a wall can remain there for several seconds before turning away on its own. We did not retrain against the real arena's wall scale, so some of the discrepancies above, particularly the wall-dwelling behaviour itself, may reflect this mismatch rather than a property of the controller's learned strategy. Deployment does not impact speed along $x$ (Section~\ref{sec:hardware_setup}), and unlike the simulated arena this axis is not actually unbounded on the real robots, so a robot travelling far enough along it is only stopped by the physical wall.}
+We also observe the Stage~2 controller spending a substantial fraction of each trial near one of the arena's walls along $y$, more than in the much larger simulated arena: the wall clamp of Eq.~\ref{eq:clamp} engages far more often at this scale than its simulated counterpart does in the $10\,\text{m}\times 10\,\text{m}$ arena, and it only reduces forward speed and does not alter heading, so a robot facing a wall can remain there for several seconds before turning away on its own. We did not retrain against the real arena's wall scale, so some of the discrepancies above, particularly the wall-dwelling behaviour itself, may reflect this mismatch rather than a property of the controller's learned strategy. Deployment does not impact speed along $x$ (Section~\ref{sec:hardware_setup}), and unlike the simulated arena this axis is not actually unbounded on the real robots, so a robot travelling far enough along it is only stopped by the physical wall.
 
-\rev{% Rebuilt as two portrait tables (Hardware / Simulation) instead of one rotated
-% 7-column table, which still didn't fit the page width even rotated at \small.
-% Reciprocity p-values are compressed to significance stars (exact p and N stay
-% in the main text) so neither table needs resizing or landscape orientation.
 \begin{table}[t]
 \centering
-\caption{Leadership metrics for real robots on \textbf{hardware}, at $n=5$ (all rows) and, for reciprocity, also at $n=10$ (second reciprocity row). Rows other than reciprocity report the median [interquartile range] across trials. Reciprocity is pooled across every (robot, trial) pair into a single Pearson correlation (Section~\ref{sec:hardware_results}); significance: $^{ns}p\geq0.05$, $^{*}p<0.05$, $^{**}p<0.01$, $^{***}p<0.001$. Exact $p$-values and pooled sample sizes $N$ are given in the main text. Compare against Table~\ref{tab:leadership_hardware_sim}.}
+\caption{Leadership metrics for real robots on hardware, at $n=5$ (all rows) and, for reciprocity, also at $n=10$ (second reciprocity row). Rows other than reciprocity report the median [interquartile range] across trials. Reciprocity is pooled across every (robot, trial) pair into a single Pearson correlation (Section~\ref{sec:hardware_results}); significance: $^{ns}p\geq0.05$, $^{*}p<0.05$, $^{**}p<0.01$, $^{***}p<0.001$. Exact $p$-values and pooled sample sizes $N$ are given in the main text. Compare against Table~\ref{tab:leadership_hardware_sim}.}
 \label{tab:leadership_hardware_hw}
 \small
 \begin{tabular}{lcc}
@@ -484,7 +479,7 @@ Hierarchy steepness & 0.84 [0.70, 0.98] & 0.85 [0.70, 0.92] \\
 
 \begin{table}[t]
 \centering
-\caption{As Table~\ref{tab:leadership_hardware_hw}, for the matched \textbf{simulations}: the same swarm size and the same 30-seed sweep methodology as Table~\ref{tab:leadership}, run at $n=5$ (or $n=10$, second reciprocity row) rather than $n=20$.}
+\caption{As Table~\ref{tab:leadership_hardware_hw}, for the matched simulations: the same swarm size and the same 30-seed sweep methodology as Table~\ref{tab:leadership}, run at $n=5$ (or $n=10$, second reciprocity row) rather than $n=20$.}
 \label{tab:leadership_hardware_sim}
 \small
 \begin{tabular}{lcc}
@@ -500,14 +495,7 @@ Hierarchy entropy & 0.89 [0.81, 0.95] & 0.82 [0.79, 0.89] \\
 Hierarchy steepness & 0.79 [0.64, 0.94] & 0.89 [0.77, 1.00] \\
 \bottomrule
 \end{tabular}
-\end{table}}
-
-% Trimmed for length (see review notes): the two 30-seed-sweep sanity-check
-% figures (former Fig. 7 "metric1_seed_sweep_n5" and Fig. 8 "metric2_seed_sweep_n5")
-% and the unclamped hardware-vs-simulation leadership scatter (former Fig. 11
-% "hardware_leadership_stage2") are removed. None were cited in the body text,
-% and all three only re-plot medians/IQRs and significance tests already given
-% in Tables~\ref{tab:leadership_hardware_hw}/\ref{tab:leadership_hardware_sim} and the surrounding prose.
+\end{table}
 
 \begin{figure}[t]
   \centering
@@ -515,10 +503,6 @@ Hierarchy steepness & 0.79 [0.64, 0.94] & 0.89 [0.77, 1.00] \\
   \caption{Stage 2: simulated trajectory (left, seed 42) against all 30 real trials overlaid (top right, each truncated to before any permanent tracking loss), instantaneous speed distribution (bottom left) and cumulative distance travelled (bottom right). Shaded bands mark the deployment-only speed-clamped zone near each wall.}
   \label{fig:hardware_traj_stage2}
 \end{figure}
-
-% NOTE (no-clamp version): the trajectory and leadership-scatter figures for the
-% "Stage 2, clamped" controller (originally here) are removed entirely, since they
-% were exclusively about that now-removed condition.
 
 \begin{figure}[t]
   \centering
