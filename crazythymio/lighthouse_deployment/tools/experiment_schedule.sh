@@ -35,7 +35,7 @@ while read -r COND K; do
   esac
   echo; echo "=== run $n/$total: condition '$COND', repetition $K ==="
   while true; do
-    WAIT_FOR_ENTER=1 RUN_TAG="${COND}_rep${K}" "$HERE/tools/run_swarm.sh" "${ROBOTS:-1 2 3 4 5 6 7}" "$DUR" "$CTRL" "$GENOME" </dev/null; rc=$?   # </dev/null: ssh must not eat the schedule lines
+    WAIT_FOR_ENTER=1 RUN_TAG="${COND}_rep${K}" "$HERE/tools/${LAUNCHER:-run_swarm.sh}" "${ROBOTS:-1 2 3 4 5 6 7}" "$DUR" "$CTRL" "$GENOME" </dev/null; rc=$?   # </dev/null: ssh must not eat the schedule lines
     [ $rc -eq 0 ] && break
     if [ $rc -eq 2 ]; then
       echo; echo "Run aborted before anybody moved (a robot was not ready -- see the reason above). Fix that robot; the SAME"
@@ -43,4 +43,4 @@ while read -r COND K; do
     else echo "run failed (exit $rc) -- fix and rerun the command to resume"; exit 1; fi
   done
 done < "$SCHED"
-echo; echo "schedule complete ($total runs)."
+echo; echo "schedule complete ($total runs) -- stopping the robots' controller processes."; "$HERE/tools/stop_all.sh"

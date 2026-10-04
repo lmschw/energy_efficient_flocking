@@ -31,6 +31,7 @@ from motor_utils import velocity_to_motor_targets
 from hebbian_swarm_experiment import (
     _corridor_speed_scale,
     _corridor_scale,
+    _avoid_scale,
     _agent_safety_speed_scale,
     _apply_obstacle_backoff,
     _apply_ir_backoff,
@@ -183,6 +184,9 @@ class LJBaselineExperiment:
 
         v, w = _lj_velocity_command(agents, self_index)
         v_policy = float(v)    # logged: LJ law output before any deployment-side reflex/governor
+        scale_avoid = _avoid_scale(agents, self_index, v) if (cfg.AGENT_AVOIDANCE_ENABLED and
+                                                               abs(agents[self_index, 0]) < cfg.UNTRACKED_XY_THRESHOLD) else 1.0
+        v *= scale_avoid
 
         # Only used here, to feed the same OptiTrack-derived obstacle-backoff reflex the
         # Hebbian deployment uses -- the LJ control law itself never sees these.
@@ -224,7 +228,7 @@ class LJBaselineExperiment:
                        "ir_front_max": max(ir[0:5]), "ir_rear_max": max(ir[5:7])},
                 command={"v": float(v), "w": float(w), "left": left, "right": right,
                          "v_policy": v_policy, "scale_corridor": float(scale_corridor),
-                         "scale_agent": float(scale_agent)},
+                         "scale_agent": float(scale_agent), "scale_avoid": float(scale_avoid)},
             )
         return v, w, left, right
 

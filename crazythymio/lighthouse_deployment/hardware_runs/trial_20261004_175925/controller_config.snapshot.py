@@ -143,16 +143,6 @@ CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # sets them from --corridor-y. The genome has no wall sense of its own, so without this robots
 # drive into walls.
 
-AGENT_AVOIDANCE_ENABLED = True
-AVOID_CONE_DEG = 60.0       # half-angle of the cone around the direction of travel in which neighbours count
-AVOID_OUTER_GAP = 0.20      # gap [m] (surface to surface) at which braking starts
-AVOID_INNER_GAP = 0.03      # gap [m] at which the forward speed reaches 0
-# DIRECTION-AWARE collision avoidance (added 2026-10-04, independent of SAFETY_LAYERS_ENABLED): v is scaled down only for
-# a neighbour AHEAD in the direction of travel (within +-AVOID_CONE_DEG), linearly from 1 at AVOID_OUTER_GAP to 0 at
-# AVOID_INNER_GAP. Neighbours beside/behind never brake, turning (w) is never touched, reversing checks what is behind --
-# so a robot can always turn or back away (the old non-directional clamp jammed the swarm). Motivation: 6-robot plain-genome
-# trial with no safety layers had a pair touching (< 0.15 m) 51% of the time.
-
 SAFETY_LAYERS_ENABLED = False
 # MASTER SWITCH for the deployment-side safety layers in the experiment classes: the agent-safety speed clamp
 # (AGENT_SAFETY_CLAMP_*), the x/y wall governors (CORRIDOR_*), and the slow crawl when the own pose is lost

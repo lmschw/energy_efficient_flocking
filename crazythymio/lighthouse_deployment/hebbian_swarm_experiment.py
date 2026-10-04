@@ -93,6 +93,31 @@ def _corridor_scale(agents, self_index, v):
                _limit_scale(float(agents[self_index, 1]), cfg.CORRIDOR_Y_MIN, cfg.CORRIDOR_Y_MAX, dy))
 
 
+def _avoid_scale(agents, self_index, v):
+    """Direction-aware collision avoidance (see AGENT_AVOIDANCE_ENABLED in controller_config.py). Returns a [0, 1] scale for v:
+    only neighbours within +-AVOID_CONE_DEG of the direction of TRAVEL (sign of v included) brake, linearly between
+    AVOID_OUTER_GAP and AVOID_INNER_GAP (surface-to-surface gap, 2*ROBOT_RAD subtracted)."""
+    if v == 0.0:
+        return 1.0
+    face = float(agents[self_index, 2]) + math.pi / 2.0          # sim heading 0 faces +y
+    sgn = 1.0 if v > 0 else -1.0
+    dx_dir, dy_dir = sgn * math.cos(face), sgn * math.sin(face)
+    cos_cone = math.cos(math.radians(cfg.AVOID_CONE_DEG))
+    x0, y0 = float(agents[self_index, 0]), float(agents[self_index, 1])
+    scale = 1.0
+    for j in range(agents.shape[0]):
+        if j == self_index or abs(agents[j, 0]) >= cfg.UNTRACKED_XY_THRESHOLD:
+            continue
+        rx, ry = float(agents[j, 0]) - x0, float(agents[j, 1]) - y0
+        dist = math.hypot(rx, ry)
+        if dist < 1e-6 or (rx * dx_dir + ry * dy_dir) / dist < cos_cone:
+            continue
+        gap = dist - 2.0 * cfg.ROBOT_RAD
+        s_ = (gap - cfg.AVOID_INNER_GAP) / (cfg.AVOID_OUTER_GAP - cfg.AVOID_INNER_GAP)
+        scale = min(scale, max(0.0, min(1.0, s_)))
+    return scale
+
+
 def _apply_ir_backoff(v, ir_values):
     """Hardware-local, OptiTrack-INDEPENDENT emergency backoff using the Thymio's own
     onboard IR proximity sensors (prox.horizontal via robot.proximity_horizontal(),
@@ -345,6 +370,9 @@ class HebbianSwarmExperiment:
 
         v, w, self.w1, self.w2, self.w3 = hebbian_step(x_in, self.w1, self.w2, self.w3, self.rules)
         v_policy = float(v)    # logged: what the network asked for, before any deployment-side reflex/governor
+        scale_avoid = _avoid_scale(agents, self_index, v) if (cfg.AGENT_AVOIDANCE_ENABLED and
+                                                               abs(agents[self_index, 0]) < cfg.UNTRACKED_XY_THRESHOLD) else 1.0
+        v *= scale_avoid
         v = _apply_obstacle_backoff(self, v, _debug_front_d, _debug_back_d)
         if cfg.SAFETY_LAYERS_ENABLED:
             if self_tracked:
@@ -401,7 +429,7 @@ class HebbianSwarmExperiment:
                        "ir_front_max": max(ir[0:5]), "ir_rear_max": max(ir[5:7])},
                 command={"v": float(v), "w": float(w), "left": left, "right": right,
                          "v_policy": v_policy, "scale_corridor": float(scale_corridor),
-                         "scale_agent": float(scale_agent)},
+                         "scale_agent": float(scale_agent), "scale_avoid": float(scale_avoid)},
             )
         return v, w, left, right
 

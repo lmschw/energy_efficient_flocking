@@ -55,7 +55,7 @@ def parse_args():
                    help="comma list of radio ids (low byte of each board's radio address, decimal "
                         "1..255, e.g. address ...E9 -> 233), parallel to --hostnames")
     p.add_argument("--genome", help="hebbian_*_best.npy (needed for --controller hebbian)")
-    p.add_argument("--controller", choices=["hebbian", "lj"], default="hebbian",
+    p.add_argument("--controller", choices=["hebbian", "lj", "idle"], default="hebbian",
                    help="hebbian = evolved genome, lj = the paper's LJ rule-based baseline (no genome)")
     p.add_argument("--uri", default="usb://0")
     p.add_argument("--origin", type=float, nargs=2, default=(0.0, 0.0), metavar=("X", "Y"),
@@ -85,6 +85,8 @@ def parse_args():
     p.add_argument("--motor-units-per-mps", type=float, help="override controller_config")
     p.add_argument("--start-at", type=float, help="unix time at which to start driving "
                    "(Pis must be time-synced); default: wait for Enter")
+    p.add_argument("--serve", metavar="DIR", help="stay connected and run one experiment per GO file in DIR (see serve())")
+    p.add_argument("--code-hash", default="", help="identifier of the deployed code; reported in DIR/ready")
     p.add_argument("--ready-file", help="touch this file once connected and steady (handshake with tools/run_swarm.sh)")
     p.add_argument("--go-file", help="then wait for this file; it holds \"<start_epoch> <stop_epoch>\" in THIS Pi's clock")
     p.add_argument("--stop-at", type=float, help="unix time (THIS Pi's clock) at which to stop; overrides --duration, so all robots\n                   "
@@ -312,6 +314,140 @@ async def latency_test(robot, args):
         print(f"RESULT {args.self_hostname} dead_time_ms={statistics.median(deads) * 1000:.0f} log_period_ms={cfg.LOG_PERIOD_MS}")
 
 
+class _Tee:
+    """Duplicates console output into the run's own console file (serve mode keeps one process over many runs)."""
+    def __init__(self, *streams):
+        self.streams = streams
+    def write(self, text):
+        for st in self.streams:
+            st.write(text)
+            st.flush()
+    def flush(self):
+        for st in self.streams:
+            st.flush()
+
+
+def _make_idle_experiment_class():
+    from lj_baseline_experiment import LJBaselineExperiment
+    from pose_utils import poses_to_agents
+
+    class IdleExperiment(LJBaselineExperiment):
+        """Logs exactly like a real run but never moves: motors 0 on every tick. For testing the pipeline on hardware."""
+        async def _tick(self):
+            self._tick_count += 1
+            poses = await self.robot.get_all_global_poses()
+            agents, i = poses_to_agents(poses, self.hostnames, self.self_hostname)
+            await self.robot.drive(0, 0)
+            if self.logger:
+                self.logger.log(state={"tick": self._tick_count, "timestamp": time.time(), "x": float(agents[i, 0]),
+                                       "y": float(agents[i, 1]), "heading": float(agents[i, 2]),
+                                       "tracked": int(abs(agents[i, 0]) < cfg.UNTRACKED_XY_THRESHOLD),
+                                       "n_neighbors_seen": sum(1 for h in self.hostnames
+                                                               if h != self.self_hostname and poses.get(h) is not None)},
+                                command={"v": 0.0, "w": 0.0, "left": 0, "right": 0})
+            return 0.0, 0.0, 0, 0
+    return IdleExperiment
+
+
+_RUN_KEYS = ("LJ_R0", "LJ_EPSILON", "LJ_R_CUT", "LJ_R_ALIGN", "SAFETY_LAYERS_ENABLED", "CORRIDOR_X_MIN", "CORRIDOR_X_MAX",
+             "CORRIDOR_Y_MIN", "CORRIDOR_Y_MAX", "BATTERY_MODE")
+
+
+async def serve(robot, args, hostnames, ids):
+    """SERVE MODE: the robot stays connected (Thymio + Crazyflie) across runs, so there is no reconnect between runs.
+    Protocol, all files in args.serve on this Pi (written atomically by tools/run_swarm.sh):
+      ready            written by THIS process once the pose is steady -- {"time", "code"}; removed when a GO is taken
+      go               JSON run spec: start, stop (THIS Pi's clock), stamp, log_dir, controller, genome, lj_r0, lj_scale,
+                       safety, corridor_y, corridor_x
+      done_<stamp>     written after the run: {"status": "ok"|"late"|"error", "log": path}
+      quit             makes this process exit
+    Every run gets a FRESH experiment object (fresh random Hebbian weights, full simulated battery) and its own config
+    (restored from the values this process started with, then the run spec applied)."""
+    import json
+    d = args.serve
+    os.makedirs(d, exist_ok=True)
+    base = {k: getattr(cfg, k) for k in _RUN_KEYS}
+    state = {"quit": False, "exp": None}
+    loop = asyncio.get_running_loop()
+
+    def _on_signal():
+        state["quit"] = True
+        if state["exp"] is not None:
+            asyncio.ensure_future(state["exp"].stop())
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        loop.add_signal_handler(sig, _on_signal)
+    print(f"SERVE mode, code {args.code_hash}", flush=True)
+    while not state["quit"] and not os.path.exists(os.path.join(d, "quit")):
+        if await steady_pose(robot, timeout_s=5.0) is None:
+            continue                               # robot being moved / not in view yet: keep waiting
+        json.dump({"time": time.time(), "code": args.code_hash}, open(os.path.join(d, "ready.tmp"), "w"))
+        os.replace(os.path.join(d, "ready.tmp"), os.path.join(d, "ready"))
+        go = os.path.join(d, "go")
+        while not os.path.exists(go) and not state["quit"] and not os.path.exists(os.path.join(d, "quit")):
+            await asyncio.sleep(0.05)
+        if not os.path.exists(go):
+            break
+        spec = json.load(open(go))
+        os.remove(go)
+        try:
+            os.remove(os.path.join(d, "ready"))
+        except FileNotFoundError:
+            pass
+        status, log_path = "error", None
+        os.makedirs(spec["log_dir"], exist_ok=True)
+        console = open(os.path.join(spec["log_dir"], f"{args.self_hostname}.console.txt"), "w")
+        real_stdout = sys.stdout
+        sys.stdout = _Tee(real_stdout, console)
+        try:
+            for k, v in base.items():
+                setattr(cfg, k, v)
+            if spec.get("lj_r0"):
+                alpha = spec["lj_r0"] / cfg.LJ_R0
+                if spec.get("lj_scale"):
+                    cfg.LJ_EPSILON *= alpha; cfg.LJ_R_CUT *= alpha; cfg.LJ_R_ALIGN *= alpha
+                cfg.LJ_R0 = spec["lj_r0"]
+            cfg.SAFETY_LAYERS_ENABLED = bool(spec.get("safety", False))
+            cfg.CORRIDOR_Y_MIN, cfg.CORRIDOR_Y_MAX = spec.get("corridor_y") or (None, None)
+            cfg.CORRIDOR_X_MIN, cfg.CORRIDOR_X_MAX = spec.get("corridor_x") or (None, None)
+            conf = {"hostnames": hostnames, "self_hostname": args.self_hostname}
+            if spec["controller"] == "lj":
+                from lj_baseline_experiment import LJBaselineExperiment as Experiment
+            elif spec["controller"] == "idle":
+                Experiment = _make_idle_experiment_class()
+            else:
+                from hebbian_swarm_experiment import HebbianSwarmExperiment as Experiment
+                conf["genome_path"] = spec["genome"]
+            log_path = os.path.join(spec["log_dir"], f"{args.self_hostname}_{int(time.time())}.csv")
+            exp = Experiment(robot=robot, logger=CsvLogger(log_path), config=conf)
+            late = time.time() - spec["start"]
+            if late > 2.0:
+                print(f"NOT READY at the start time ({late:.1f} s late) -- sitting this run out", flush=True)
+                status = "late"
+            else:
+                print(f"run {spec['stamp']}: {spec['controller']} {spec.get('genome') or ''}, logging to {log_path}", flush=True)
+                await asyncio.sleep(max(0.0, spec["start"] - time.time()))
+                state["exp"] = exp
+                handle = loop.call_later(max(0.0, spec["stop"] - time.time()), lambda: asyncio.ensure_future(exp.stop()))
+                await exp.run()
+                handle.cancel()
+                status = "ok"
+        except Exception as e:
+            print("run failed:", type(e).__name__, e, flush=True)
+        finally:
+            state["exp"] = None
+            for _ in range(3):
+                try:
+                    await asyncio.wait_for(robot.stop(), timeout=2.0)
+                    break
+                except Exception as e:
+                    print("motor stop failed, retrying:", type(e).__name__, flush=True)
+            sys.stdout = real_stdout
+            console.close()
+            json.dump({"status": status, "log": log_path}, open(os.path.join(d, f"done_{spec['stamp']}.tmp"), "w"))
+            os.replace(os.path.join(d, f"done_{spec['stamp']}.tmp"), os.path.join(d, f"done_{spec['stamp']}"))
+    print("SERVE mode ended", flush=True)
+
+
 async def main():
     args = parse_args()
     apply_config(args)
@@ -367,10 +503,15 @@ async def main():
                 raise SystemExit("No steady pose within 30 s (not in view of the stations, or being moved).")
             print(f"WHERE {args.self_hostname} x={p[0]:+.3f} y={p[1]:+.3f} z={p[2]:+.3f} yaw_deg={math.degrees(p[3]):+.0f}")
             return
+        if args.serve:
+            await serve(robot, args, hostnames, ids)
+            return
         if args.controller == "hebbian" and not args.genome:
             raise SystemExit("--genome is required for --controller hebbian")
         if args.controller == "lj":
             from lj_baseline_experiment import LJBaselineExperiment as Experiment
+        elif args.controller == "idle":
+            Experiment = _make_idle_experiment_class()
         else:
             from hebbian_swarm_experiment import HebbianSwarmExperiment as Experiment
         os.makedirs(args.log_dir, exist_ok=True)

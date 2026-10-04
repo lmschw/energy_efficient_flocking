@@ -13,7 +13,7 @@ def ssh(cmd, t=25):
 try:
     rc, out = ssh(f"""echo '##LSUSB'; lsusb; echo '##DMESG'; sudo dmesg -T | grep -iE 'usb [0-9]-[0-9]' | tail -6;
 echo '##TDM'; pgrep -f '[t]hymio-device-manager' >/dev/null && echo running || echo stopped;
-echo '##CONSOLE'; {"tail -8 /tmp/run_" + stamp + ".log" if stamp else "ls -t /tmp/run_*.log 2>/dev/null | head -1 | xargs -r tail -8"}""")
+echo '##CONSOLE'; {"tail -8 /tmp/hebb_serve/serve.log" if stamp in (None, "serve") else "tail -8 /tmp/run_" + stamp + ".log"}""")
 except subprocess.TimeoutExpired:
     rc, out = 255, ""
 if rc == 255 or not out:
