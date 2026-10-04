@@ -179,3 +179,31 @@ python run_hebbian.py --self-hostname thymio-01 $H \
   neighbors are therefore up to ~0.2 s old.
 * `MOTOR_UNITS_PER_MPS` was carried over from the OptiTrack config (stale there too);
   recalibrate as in step C. Heading offsets and corridor start empty/disabled.
+
+## Lighthouse setup without cfclient's GUI
+`lighthouse_setup.py` (this folder) replaces the cfclient wizard: `status` (what the board sees),
+`calibrate` (guided geometry estimation, writes to the board and saves
+`lighthouse_config/lighthouse_system.yaml`), `upload` (writes the saved file to other boards,
+`--ids 2,3,4,5,6,7`). The saved file holds geometry + base-station calibration and is valid for
+all robots while the base stations stay put -- commit it. Run `python lighthouse_setup.py -h`.
+Needs cflib (`pip install cflib`); on the laptop use the conda python that has it.
+
+## Fleet bring-up notes (learned the hard way, 2026-10-04)
+* **Robot ids = low byte of the radio address, any 1..255** (e.g. address `E7E7E7E7E9` -> id 233; pass
+  `--ids ...,233,...` to `run_hebbian.py`). The firmware keeps a 10-slot neighbor table keyed by id.
+* **All boards must be on the same radio channel** (P2P is broadcast on the board's own channel). Check
+  with a scan; a board on another channel is simply never heard.
+* **Find a board's address**: `cflib.crtp.scan_interfaces(0xE7E7E7E7xx)` per candidate address; the
+  default `E7E7E7E7E7` only matches un-configured boards. A sweep over `E7E7E7E700..FF` takes ~3 min.
+* **Deck bitstream.** Firmware here requires Lighthouse FPGA bitstream V6 (104093 bytes, CRC32
+  112BC794). A board whose deck shows `LHFL: Bitstream ... [FAIL]` never positions. Fix once per deck:
+  download `https://github.com/bitcraze/lighthouse-fpga/releases/download/V6/lighthouse.bin`, then
+  `python -m cfloader flash lighthouse.bin deck-bcLighthouse4-fw -w radio://0/<ch>/2M/<ADDR>`.
+* **Firmware binaries** (build from `../firmware/app_share_pos_hebbian/` inside the CrazyThymio-firmware
+  fork; flash with `python -m cfloader flash cf2.bin stm32-fw -w <uri>`):
+  autodetect (default `app-config`) works whenever `DECK_CORE: 1 deck(s) found` shows up in the boot log.
+  Only if a board reports `0 deck(s)` despite a seated deck, add `CONFIG_DECK_FORCE="bcLighthouse4"` to
+  `app-config` for that board. Do NOT force on a board whose deck is detected -- the driver then
+  conflicts and "No decks will be initialized".
+* Boot log (console) of a board: connect with cflib and print `cf.console` for a few seconds; it shows
+  deck detection, estimator, bitstream check and `HEBBIAN: ... radio id N`.

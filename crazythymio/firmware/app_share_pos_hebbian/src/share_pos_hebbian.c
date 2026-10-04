@@ -9,11 +9,15 @@
  * and the Pi computes range/bearing sensing exactly as the simulation does
  * (ants26_replication/hardware_deployment/sensor_model.py).
  *
- * Radio id of a robot = lowest byte of its Crazyflie radio address, must be 1..10 and unique.
- * Neighbor positions are int16 millimetres; -32768 means "not heard in the last NEIGHBOR_TIMEOUT_MS".
+ * Robot id = lowest byte of its Crazyflie radio address: any value 1..255, unique per robot.
+ * The table holds up to N_PEERS (10) robots in slots assigned in order of first contact; each
+ * slot logs the id of the robot it currently holds (0 = empty), so the Pi maps slots to robots
+ * by id, never by slot position. Positions are int16 millimetres; -32768 and id 0 mean the slot
+ * is empty (nothing heard from it in the last NEIGHBOR_TIMEOUT_MS).
  *
  * Log groups:  ctr (own center x, y [m, float]),
- *              nbA (x1,y1 .. x5,y5), nbB (x6,y6 .. x10,y10)   [mm, int16]
+ *              nbA (x1,y1,id1 .. x5,y5,id5), nbB (x6,y6,id6 .. x10,y10,id10)
+ *              x/y: int16 mm, id: uint8
  */
 #include <math.h>
 #include <string.h>
@@ -51,6 +55,7 @@ typedef struct {
 
 static int16_t nb_x[N_PEERS];
 static int16_t nb_y[N_PEERS];
+static uint8_t nb_id[N_PEERS];     // 0 = slot empty
 static TickType_t nb_tick[N_PEERS];
 static bool nb_heard[N_PEERS];
 static float ctr_x = 0.0f;
@@ -60,10 +65,29 @@ static void p2pcallbackHandler(P2PPacket *p)
 {
   _coords other;
   memcpy(&other, p->data, sizeof(other));
-  if (other.id < 1 || other.id > N_PEERS) {
+  if (other.id == 0) {
     return;
   }
-  int i = other.id - 1;
+  // Slot already holding this id, else the first free slot, else drop (more than N_PEERS robots).
+  int i = -1;
+  for (int k = 0; k < N_PEERS; k++) {
+    if (nb_heard[k] && nb_id[k] == other.id) {
+      i = k;
+      break;
+    }
+  }
+  if (i < 0) {
+    for (int k = 0; k < N_PEERS; k++) {
+      if (!nb_heard[k]) {
+        i = k;
+        break;
+      }
+    }
+  }
+  if (i < 0) {
+    return;
+  }
+  nb_id[i] = other.id;
   // Transmitted coordinates are already the sender's center position (see appMain()).
   nb_x[i] = (int16_t)(other.x * 1000.0f);
   nb_y[i] = (int16_t)(other.y * 1000.0f);
@@ -76,6 +100,7 @@ void appMain()
   for (int i = 0; i < N_PEERS; i++) {
     nb_x[i] = NO_NEIGHBOR;
     nb_y[i] = NO_NEIGHBOR;
+    nb_id[i] = 0;
     nb_heard[i] = false;
   }
 
@@ -94,27 +119,37 @@ void appMain()
   LOG_GROUP_START(nbA)
   LOG_ADD(LOG_INT16, x1, &nb_x[0])
   LOG_ADD(LOG_INT16, y1, &nb_y[0])
+  LOG_ADD(LOG_UINT8, id1, &nb_id[0])
   LOG_ADD(LOG_INT16, x2, &nb_x[1])
   LOG_ADD(LOG_INT16, y2, &nb_y[1])
+  LOG_ADD(LOG_UINT8, id2, &nb_id[1])
   LOG_ADD(LOG_INT16, x3, &nb_x[2])
   LOG_ADD(LOG_INT16, y3, &nb_y[2])
+  LOG_ADD(LOG_UINT8, id3, &nb_id[2])
   LOG_ADD(LOG_INT16, x4, &nb_x[3])
   LOG_ADD(LOG_INT16, y4, &nb_y[3])
+  LOG_ADD(LOG_UINT8, id4, &nb_id[3])
   LOG_ADD(LOG_INT16, x5, &nb_x[4])
   LOG_ADD(LOG_INT16, y5, &nb_y[4])
+  LOG_ADD(LOG_UINT8, id5, &nb_id[4])
   LOG_GROUP_STOP(nbA)
 
   LOG_GROUP_START(nbB)
   LOG_ADD(LOG_INT16, x6, &nb_x[5])
   LOG_ADD(LOG_INT16, y6, &nb_y[5])
+  LOG_ADD(LOG_UINT8, id6, &nb_id[5])
   LOG_ADD(LOG_INT16, x7, &nb_x[6])
   LOG_ADD(LOG_INT16, y7, &nb_y[6])
+  LOG_ADD(LOG_UINT8, id7, &nb_id[6])
   LOG_ADD(LOG_INT16, x8, &nb_x[7])
   LOG_ADD(LOG_INT16, y8, &nb_y[7])
+  LOG_ADD(LOG_UINT8, id8, &nb_id[7])
   LOG_ADD(LOG_INT16, x9, &nb_x[8])
   LOG_ADD(LOG_INT16, y9, &nb_y[8])
+  LOG_ADD(LOG_UINT8, id9, &nb_id[8])
   LOG_ADD(LOG_INT16, x10, &nb_x[9])
   LOG_ADD(LOG_INT16, y10, &nb_y[9])
+  LOG_ADD(LOG_UINT8, id10, &nb_id[9])
   LOG_GROUP_STOP(nbB)
 
   p2pRegisterCB(p2pcallbackHandler);
@@ -146,6 +181,7 @@ void appMain()
         nb_heard[i] = false;
         nb_x[i] = NO_NEIGHBOR;
         nb_y[i] = NO_NEIGHBOR;
+        nb_id[i] = 0;
       }
     }
     vTaskDelay(M2T(LOOP_MS));

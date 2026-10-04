@@ -23,7 +23,7 @@ import controller_config as cfg  # noqa: E402
 from pose_utils import Pose  # noqa: E402
 
 NO_NEIGHBOR = -32768          # int16 sentinel written by the firmware: not heard recently
-N_PEERS = 10                  # firmware neighbor table size (radio ids 1..10)
+N_PEERS = 10                  # firmware neighbor table size (slots; ids are any 1..255)
 
 
 class ThymioLink:
@@ -101,7 +101,8 @@ class LighthouseLink:
         self.scf = None
         self.own = {}                       # latest values from the log callbacks
         self.own_time = 0.0                 # wall-clock time of the last `ctr` update
-        self.neighbors = {}                 # radio id -> (x_m, y_m), only fresh ones
+        self.neighbors = {}                 # radio id (1..255) -> (x_m, y_m), only fresh ones
+        self._slots = {}
 
     def connect(self, reset_estimator=True):
         import cflib.crtp
@@ -113,6 +114,11 @@ class LighthouseLink:
         self.scf = SyncCrazyflie(self.uri, cf=Crazyflie(rw_cache="./cache"))
         self.scf.open_link()
         cf = self.scf.cf
+        # The firmware only picks the Kalman estimator (the one that fuses Lighthouse) by
+        # itself when it detects a positioning deck at boot; force it so a missed detection is
+        # not silently masked by the complementary estimator (which ignores Lighthouse).
+        cf.param.set_value("stabilizer.estimator", "2")
+        time.sleep(0.2)
         if reset_estimator:
             # Robot must be standing still, in view of the base stations.
             cf.param.set_value("kalman.resetEstimation", "1")
@@ -129,30 +135,31 @@ class LighthouseLink:
         cf.log.add_config(own)
         own.start()
 
-        for name, ids in (("nbA", range(1, 6)), ("nbB", range(6, 11))):
+        for name, slots in (("nbA", range(1, 6)), ("nbB", range(6, 11))):
             cfg = LogConfig(name=name, period_in_ms=100)
-            for i in ids:
-                cfg.add_variable(f"{name}.x{i}", "int16_t")
-                cfg.add_variable(f"{name}.y{i}", "int16_t")
+            for k in slots:
+                cfg.add_variable(f"{name}.x{k}", "int16_t")
+                cfg.add_variable(f"{name}.y{k}", "int16_t")
+                cfg.add_variable(f"{name}.id{k}", "uint8_t")
             cfg.data_received_cb.add_callback(self._on_neighbors)
             cf.log.add_config(cfg)
             cfg.start()
+        self._slots = {}        # table slot -> (robot id or 0, x_m, y_m), updated per log block
 
     def _on_own(self, timestamp, data, logconf):
         self.own = dict(data)
         self.own_time = time.time()
 
     def _on_neighbors(self, timestamp, data, logconf):
-        for key, value in data.items():
-            group, name = key.split(".")
-            peer, axis = int(name[1:]), name[0]
-            if axis != "x":
-                continue
-            y = data[f"{group}.y{peer}"]
-            if value == NO_NEIGHBOR or y == NO_NEIGHBOR:
-                self.neighbors.pop(peer, None)
-            else:
-                self.neighbors[peer] = (value / 1000.0, y / 1000.0)
+        """Each block carries 5 slots of the firmware's neighbor table. A slot holds whichever
+        robot (any radio id 1..255) was heard first; id 0 / x = -32768 means empty."""
+        group = logconf.name
+        first = 1 if group == "nbA" else 6
+        for k in range(first, first + 5):
+            self._slots[k] = (data[f"{group}.id{k}"], data[f"{group}.x{k}"], data[f"{group}.y{k}"])
+        self.neighbors = {rid: (x / 1000.0, y / 1000.0)
+                          for rid, x, y in self._slots.values()
+                          if rid != 0 and x != NO_NEIGHBOR and y != NO_NEIGHBOR}
 
     def close(self):
         if self.scf is not None:

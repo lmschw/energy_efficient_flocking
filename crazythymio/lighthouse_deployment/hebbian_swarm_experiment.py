@@ -54,6 +54,45 @@ def _corridor_speed_scale(y):
     return min(1.0, margin / cfg.CORRIDOR_SLOWDOWN_MARGIN_M)
 
 
+def _corridor_x_speed_scale(x):
+    """Same wall-safety governor as _corridor_speed_scale(), for x (CORRIDOR_X_MIN/MAX). Added for the
+    Lighthouse deployment, whose arena has no physical walls: [0, 1], 1.0 until CORRIDOR_SLOWDOWN_MARGIN_M
+    before either limit, 0.0 at/after it. Disabled (1.0) until both limits are set."""
+    if cfg.CORRIDOR_X_MIN is None or cfg.CORRIDOR_X_MAX is None:
+        return 1.0
+    margin = min(x - cfg.CORRIDOR_X_MIN, cfg.CORRIDOR_X_MAX - x)
+    if margin <= 0.0:
+        return 0.0
+    return min(1.0, margin / cfg.CORRIDOR_SLOWDOWN_MARGIN_M)
+
+
+def _limit_scale(p, lo, hi, direction):
+    """[0, 1] speed scale along ONE axis, DIRECTION-AWARE (Lighthouse deployment): only motion toward a
+    limit is slowed. `direction` is the sign of the robot's velocity component along this axis (+1 toward
+    `hi`, -1 toward `lo`, 0 = none). A robot beyond a limit can therefore always drive back inward --
+    the original governors zeroed v regardless of heading and trapped robots at/after a limit (confirmed
+    in the first real run: robots started 7 cm past the x limit and never moved)."""
+    if lo is None or hi is None or direction == 0:
+        return 1.0
+    margin = (hi - p) if direction > 0 else (p - lo)
+    if margin <= 0.0:
+        return 0.0
+    return min(1.0, margin / cfg.CORRIDOR_SLOWDOWN_MARGIN_M)
+
+
+def _corridor_scale(agents, self_index, v):
+    """Combined x/y wall governor for the commanded forward speed v (see _limit_scale)."""
+    if v == 0.0:
+        return 1.0
+    face = float(agents[self_index, 2]) + math.pi / 2.0      # sim heading 0 faces +y
+    sgn = math.copysign(1.0, v)
+    cx, cy = sgn * math.cos(face), sgn * math.sin(face)
+    dx = 0 if abs(cx) < 1e-3 else (1 if cx > 0 else -1)
+    dy = 0 if abs(cy) < 1e-3 else (1 if cy > 0 else -1)
+    return min(_limit_scale(float(agents[self_index, 0]), cfg.CORRIDOR_X_MIN, cfg.CORRIDOR_X_MAX, dx),
+               _limit_scale(float(agents[self_index, 1]), cfg.CORRIDOR_Y_MIN, cfg.CORRIDOR_Y_MAX, dy))
+
+
 def _apply_ir_backoff(v, ir_values):
     """Hardware-local, OptiTrack-INDEPENDENT emergency backoff using the Thymio's own
     onboard IR proximity sensors (prox.horizontal via robot.proximity_horizontal(),
@@ -81,6 +120,8 @@ def _apply_ir_backoff(v, ir_values):
     placeholders -- prox.horizontal's raw scale depends on your robots' surface
     reflectivity and hasn't been measured on this rig. Calibrate before trusting this:
     print raw proximity_horizontal() values at a few known real distances first."""
+    if not cfg.IR_BACKOFF_ENABLED:
+        return v
     front_max = max(ir_values[0:5])
     rear_max = max(ir_values[5:7])
     if front_max > cfg.IR_OBSTACLE_THRESHOLD:
@@ -308,7 +349,7 @@ class HebbianSwarmExperiment:
             # vel[:,0] *= np.minimum(agent_scale, wall_scale) combination exactly: whichever
             # constraint (nearest neighbor or nearest wall) is more restrictive wins, rather
             # than compounding both into an even smaller scale.
-            v *= min(_corridor_speed_scale(current_position[1]),
+            v *= min(_corridor_scale(agents, self_index, v),
                      _agent_safety_speed_scale(agents, self_index))
         else:
             # CANNOT compute _agent_safety_speed_scale/_corridor_speed_scale without a real

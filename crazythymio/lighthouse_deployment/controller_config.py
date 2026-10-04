@@ -79,12 +79,24 @@ WHEEL_RADIUS_M = 0.021
 WHEEL_DISTANCE_M = 0.085
 MAX_MOTOR_TARGET = 500       # raw Thymio motor units; clamped in motor_utils.py
 
-MOTOR_UNITS_PER_MPS = 3553.09
-# Carried over from the OptiTrack deployment (itself marked stale there). Re-measure with
-# `run_hebbian.py --calibrate-heading` and pass --motor-units-per-mps, or edit here.
+MOTOR_UNITS_PER_MPS = 2949.0
+# MEASURED 2026-10-04 with `run_hebbian.py --calibrate-heading` on all 7 robots (150 motor units for
+# 4 s -> 0.202..0.214 m): 2798..2976, median 2949 (robot 5 slowest). Replaced the 3553.09 carried over
+# from the OptiTrack deployment. Raw results: lighthouse_config/heading_calibration.csv. Note
+# 0.2 m/s needs 590 units but MAX_MOTOR_TARGET caps at 500, i.e. top speed ~0.17 m/s.
 
 LIGHTHOUSE_HEADING_OFFSET_RAD_DEFAULT = 0.0
-LIGHTHOUSE_HEADING_OFFSET_RAD = {}
+LIGHTHOUSE_HEADING_OFFSET_RAD = {
+    # MEASURED 2026-10-04 (lighthouse_config/heading_calibration.csv). robot-2's Crazyflie was first
+    # mounted ~180 deg rotated (offset 3.0554); re-mounted and re-calibrated the same day.
+    "robot-1": -0.0138,
+    "robot-2": -0.0922,
+    "robot-3": 0.0431,
+    "robot-4": -0.0482,
+    "robot-5": -0.0418,
+    "robot-6": -0.0570,
+    "robot-7": 0.0431,
+}
 # Rotation [rad] of the Crazyflie board's +x axis relative to the Thymio's front, added to the
 # heading in pose_utils.poses_to_agents(). 0.0 assumes the board's x axis points along the
 # Thymio's front. Per robot: measure with `run_hebbian.py --calibrate-heading`.
@@ -97,6 +109,10 @@ POSE_TIMEOUT_S = 1.0         # own pose older than this counts as untracked (lig
 
 CORRIDOR_Y_MIN = None
 CORRIDOR_Y_MAX = None
+CORRIDOR_X_MIN = None
+CORRIDOR_X_MAX = None
+# Same governor for x (added 2026-10-04: the LJ baseline pulls the swarm toward -x at ~0.15 m/s and the arena has
+# no physical walls). Disabled while either is None; run_hebbian.py sets them from --corridor-x.
 CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # Wall slow-down governor in the SHIFTED frame (arena center = 0,0): v scales linearly from 1
 # (>= margin from both walls) to 0 at the wall. Disabled while either is None; run_hebbian.py
@@ -149,6 +165,11 @@ OBSTACLE_BACKOFF_SPEED = 0.05   # m/s, magnitude of the straight-line backoff/fo
                                 # maneuver.
 OBSTACLE_BACKOFF_TICKS = 4      # how many ticks the reflex holds once triggered (~2s)
                                 # before re-evaluating from scratch.
+
+IR_BACKOFF_ENABLED = False
+# DISABLED 2026-10-04 on request (Lighthouse deployment only): the Thymio-IR emergency backoff in
+# hebbian_swarm_experiment._apply_ir_backoff() / the LJ experiment is switched off; IR readings are still
+# logged (ir_front_max / ir_rear_max). The position-based OBSTACLE_BACKOFF_* reflex below is unchanged.
 
 IR_OBSTACLE_THRESHOLD = 2000     # raw prox.horizontal units. UNVERIFIED PLACEHOLDER --
                                   # has NOT been measured on this rig's actual robots
@@ -263,3 +284,27 @@ BATTERY_WHEEL_POWER_DIVISOR = 4.0
 BATTERY_MIN_DRAIN = 0.10
 BATTERY_DRAIN_SCALE = 2.0
 
+# =====================================================================================
+# --- LJ baseline (lj_baseline_experiment.py only -- unused by the Hebbian controller) -
+# =====================================================================================
+# The paper's Table 3 "standard collective motion baseline" (Fig. 5a's cluster-4 point):
+# a fixed, hand-designed LJ-spacing + heading-alignment + goal-pull control law, no
+# learning, no genome. Rule gains copied verbatim from hardware_transfer_test/final/
+# lj_baseline/paper_baseline_rules.json -- the exact baseline the paper's simulation
+# results were evaluated against -- not re-tuned for hardware. Geometry constants copied
+# verbatim from ants26_replication/experiment/config.py's R_CUT/R_MIN/R_ALIGN, for the
+# same reason MOTOR_UNITS_PER_MPS etc. above must match the Hebbian genome's own
+# training config. The velocity caps are NOT duplicated here -- LINEAR_VEL_MAX/
+# ANGULAR_VEL_MAX above are the same 0.2 m/s / pi/5 rad/s in experiment/config.py too,
+# so lj_baseline_experiment.py uses those directly.
+LJ_R0 = 0.7
+LJ_EPSILON = 1.0
+LJ_K_ALIGN = 0.0
+LJ_K_GOAL = 3.0
+LJ_K1 = 0.05
+LJ_K2 = 0.5
+LJ_U = 0.0
+
+LJ_R_CUT = 3.0
+LJ_R_MIN = 0.0
+LJ_R_ALIGN = 1.5
