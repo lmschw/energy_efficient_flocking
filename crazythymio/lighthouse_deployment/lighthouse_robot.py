@@ -1,7 +1,6 @@
 """Drop-in replacement for thymio_swarm_platform's Robot, for the CrazyThymio hardware stack
 (Thymio + Raspberry Pi + Crazyflie board with a Lighthouse deck, code from
-https://github.com/fudavd/CrazyThymio), so ants26_replication/hardware_deployment's
-HebbianSwarmExperiment runs on it unchanged.
+https://github.com/fudavd/CrazyThymio), so the HebbianSwarmExperiment in this folder runs on it.
 
 It implements exactly the four methods HebbianSwarmExperiment calls:
   get_all_global_poses() -> {hostname: Pose}   (own pose from the Lighthouse Kalman estimate,
@@ -9,7 +8,7 @@ It implements exactly the four methods HebbianSwarmExperiment calls:
   drive(left, right), stop()                    (Thymio motors via the Thymio Device Manager)
   proximity_horizontal()                        (Thymio IR sensors)
 
-Needs the firmware in crazythymio/firmware/app_share_pos_hebbian/ on every Crazyflie board:
+Needs the firmware in ../firmware/app_share_pos_hebbian/ on every Crazyflie board:
 it broadcasts each robot's position over the radio and exposes the neighbor table through the
 `ctr`, `nbA` and `nbB` log groups read below.
 """
@@ -19,12 +18,11 @@ import os
 import sys
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
-                                "ants26_replication", "hardware_deployment"))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # this folder only
+import controller_config as cfg  # noqa: E402
 from pose_utils import Pose  # noqa: E402
 
 NO_NEIGHBOR = -32768          # int16 sentinel written by the firmware: not heard recently
-POSE_TIMEOUT_S = 1.0          # own pose older than this counts as untracked
 N_PEERS = 10                  # firmware neighbor table size (radio ids 1..10)
 
 
@@ -182,7 +180,7 @@ class LighthouseRobot:
         """(x, y, z, yaw_rad) in the origin-shifted frame, or None if the board has not
         reported recently."""
         b = self.board
-        if not b.own or time.time() - b.own_time > POSE_TIMEOUT_S:
+        if not b.own or time.time() - b.own_time > cfg.POSE_TIMEOUT_S:
             return None
         return (b.own["ctr.x"] - self.origin_xy[0], b.own["ctr.y"] - self.origin_xy[1],
                 b.own["stateEstimate.z"], math.radians(b.own["stateEstimate.yaw"]))

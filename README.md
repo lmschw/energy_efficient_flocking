@@ -7,9 +7,10 @@
 - `crazythymio/` -- hardware stack for the next round of hardware experiments: Thymio +
   Crazyflie board with Lighthouse positioning in place of OptiTrack. Upstream code from
   https://github.com/fudavd/CrazyThymio (see [Acknowledgements](#acknowledgements)); our
-  glue connecting it to the Hebbian controller (custom firmware, `hebbian/run_hebbian.py`,
-  setup/calibration guide) is in `crazythymio/hebbian/` and
-  `crazythymio/firmware/` -- start with `crazythymio/hebbian/README.md`.
+  self-contained deployment of the Hebbian controller on it (own config, custom firmware,
+  launcher, setup/calibration guide) is in `crazythymio/lighthouse_deployment/` and
+  `crazythymio/firmware/` -- start with `crazythymio/lighthouse_deployment/README.md`.
+  Independent of the OptiTrack deployment in `ants26_replication/hardware_deployment/`.
 - `hardware_transfer_test/` -- evaluates three conditions side by side (the LJ Table-3
   rule-based baseline, and two evolved Hebbian genomes -- one from before the hard
   safety-clamp reflex layer existed, one trained with it active) across n_agents in

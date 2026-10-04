@@ -1,16 +1,16 @@
 """Runs the Hebbian ABCD controller on ONE Thymio + Raspberry Pi + Crazyflie-board (Lighthouse)
 robot. Start the same command (only --self-hostname differs) on every Pi.
 
-  python hebbian/run_hebbian.py --self-hostname thymio-01 \
+  python run_hebbian.py --self-hostname thymio-01 \
       --hostnames thymio-01,thymio-02,thymio-03 --ids 1,2,3 \
-      --genome ../ants26_replication/hardware_deployment/plain_seed123_clamped_best.npy \
+      --genome plain_seed123_clamped_best.npy \
       --origin 2.0 1.5 --corridor-y -1.5 1.5
 
 Modes besides the experiment itself:
   --check              print own pose / neighbors / IR for 20 s, motors off
   --calibrate-heading  drive straight for 4 s, print the board's HEADING offset and a
                        suggested MOTOR_UNITS_PER_MPS (robot needs ~0.5 m free path ahead)
-See crazythymio/hebbian/README.md for the full procedure.
+See README.md in this folder for the full procedure.
 """
 import argparse
 import asyncio
@@ -22,9 +22,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-HW = os.path.join(HERE, "..", "..", "ants26_replication", "hardware_deployment")
-sys.path.insert(0, HERE)
-sys.path.insert(0, HW)
+sys.path.insert(0, HERE)   # LIGHTHOUSE deployment: imports only this folder's own modules
 
 import numpy as np  # noqa: E402
 
@@ -75,8 +73,6 @@ def parse_args():
 
 
 def apply_config(args):
-    cfg.POSE_SOURCE = "lighthouse"
-    cfg.POSITION_AXES = [0, 1]
     if args.heading_offsets:
         for item in args.heading_offsets.split(","):
             host, val = item.split("=")

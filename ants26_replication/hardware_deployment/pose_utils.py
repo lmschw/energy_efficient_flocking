@@ -36,10 +36,7 @@ _warned_missing_offset_hosts = set()  # module-level: print the fallback warning
                                        # CONTROL_TICK_SECONDS, so a per-call warning would
                                        # flood the log within seconds).
 
-def _up_axis_index():
-    # Looked up per call, not at import: the Lighthouse launcher switches
-    # cfg.POSITION_AXES after this module may already have been imported.
-    return ({0, 1, 2} - set(cfg.POSITION_AXES)).pop()
+_UP_AXIS_INDEX = ({0, 1, 2} - set(cfg.POSITION_AXES)).pop()
 # The one raw position component POSITION_AXES doesn't use for the ground plane -- see
 # cfg.UP_AXIS_OUTLIER_THRESHOLD_M's comment for why this is worth checking at all: a
 # rigid body can solve against the wrong markers and keep reporting a well-formed but
@@ -66,7 +63,6 @@ def _find_up_axis_outliers(poses, hostnames):
     UP_AXIS_OUTLIER_THRESHOLD_M sits between those two regimes. Needs >=2 real poses
     this tick to have any peer to compare against; with 0 or 1, returns no outliers
     (nothing to detect an outlier against)."""
-    _UP_AXIS_INDEX = _up_axis_index()
     up_vals = {host: poses[host].position[_UP_AXIS_INDEX]
                for host in hostnames if poses.get(host) is not None}
     if len(up_vals) < 2:
@@ -164,35 +160,16 @@ def poses_to_agents(poses, hostnames, self_hostname):
     at (0, 0) -- so it reads as "no neighbor there" to sensor_model's range cutoff
     instead of being mistaken for a real, very-close robot.
     """
-    lighthouse = cfg.POSE_SOURCE == "lighthouse"
-    ax0, ax1 = (0, 1) if lighthouse else cfg.POSITION_AXES
+    ax0, ax1 = cfg.POSITION_AXES
     agents = np.zeros((len(hostnames), 4))
     self_index = hostnames.index(self_hostname)
-    if lighthouse:
-        # Lighthouse/CrazyThymio poses (crazythymio/hebbian/lighthouse_robot.py) are already
-        # freshness-checked there (None = no recent data), neighbor positions come from
-        # 1 mm-quantized radio packets that legitimately repeat bit-for-bit while a robot
-        # stands still (would false-trigger _find_stale_poses), and every robot's "up" axis
-        # is just a board height (nothing to outlier-check). Both OptiTrack-specific
-        # detectors are therefore skipped.
-        outlier_hosts = set()
-    else:
-        outlier_hosts = _find_up_axis_outliers(poses, hostnames) | _find_stale_poses(poses, hostnames)
+    outlier_hosts = _find_up_axis_outliers(poses, hostnames) | _find_stale_poses(poses, hostnames)
     for i, host in enumerate(hostnames):
         pose = poses.get(host)
         if pose is None or host in outlier_hosts:
             agents[i] = [1e4, 1e4, 0.0, cfg.BATTERY_SENSOR_PLACEHOLDER]
             continue
         x, y = pose.position[ax0], pose.position[ax1]
-        if lighthouse:
-            # Z-up quaternion yaw, CCW from +x (Crazyflie convention). The simulation's
-            # heading 0 faces +y, hence the -pi/2; the offset is the board's mounting
-            # rotation relative to the Thymio's front (see controller_config).
-            yaw = (quaternion_to_yaw(*pose.orientation) * cfg.ROTATION_SIGN
-                   - np.pi / 2.0 + cfg.LIGHTHOUSE_HEADING_OFFSET_RAD.get(
-                       host, cfg.LIGHTHOUSE_HEADING_OFFSET_RAD_DEFAULT))
-            agents[i] = [x, y, _wrap_to_pi(yaw), cfg.BATTERY_SENSOR_PLACEHOLDER]
-            continue
         yaw = quaternion_to_yaw(*pose.orientation) * cfg.ROTATION_SIGN + _heading_offset_for(host)
         agents[i] = [x, y, _wrap_to_pi(yaw), cfg.BATTERY_SENSOR_PLACEHOLDER]
     return agents, self_index

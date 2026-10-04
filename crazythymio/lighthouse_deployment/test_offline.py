@@ -1,5 +1,5 @@
 """Hardware-free check of the Lighthouse -> HebbianSwarmExperiment wiring (fake Crazyflie
-board and Thymio): python crazythymio/hebbian/test_offline.py"""
+board and Thymio): python crazythymio/lighthouse_deployment/test_offline.py"""
 import asyncio
 import math
 import os
@@ -8,15 +8,15 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-sys.path.insert(0, os.path.join(HERE, "..", "..", "ants26_replication", "hardware_deployment"))
 
 import numpy as np
 import controller_config as cfg
 from lighthouse_robot import LighthouseRobot, NO_NEIGHBOR
 from hebbian_swarm_experiment import HebbianSwarmExperiment
+import pose_utils
+for m in (cfg, pose_utils, HebbianSwarmExperiment.__module__ and sys.modules[HebbianSwarmExperiment.__module__]):
+    assert os.path.dirname(os.path.abspath(m.__file__)) == os.path.abspath(HERE), m.__file__  # isolation
 
-cfg.POSE_SOURCE = "lighthouse"
-cfg.POSITION_AXES = [0, 1]
 
 
 class FakeThymio:

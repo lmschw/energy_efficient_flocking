@@ -152,18 +152,6 @@ HEADING_OFFSET_RAD = {
 # Re-run calibration with that fix in place and replace these three values before
 # trusting them.
 
-POSE_SOURCE = "optitrack"   # "optitrack" (thymio_swarm_platform poses, everything below
-                            # as calibrated) or "lighthouse" (crazythymio/hebbian/ -- set at
-                            # run time by run_hebbian.py, not meant to be edited by hand).
-
-LIGHTHOUSE_HEADING_OFFSET_RAD_DEFAULT = 0.0
-LIGHTHOUSE_HEADING_OFFSET_RAD = {}
-# UNVERIFIED (Lighthouse only): rotation [rad] of the Crazyflie board's +x axis relative to
-# the Thymio's forward direction, added to the heading in pose_utils.poses_to_agents().
-# 0.0 assumes the board is mounted with its x axis pointing along the Thymio's front, like
-# in the upstream CrazyThymio rig. Measure it per robot with `run_hebbian.py --calibrate-heading`
-# (see crazythymio/hebbian/README.md) and set via --heading-offsets.
-
 POSITION_AXES = [0, 2]
 # This is a deterministic consequence of the rig being confirmed Y-up (axis 1 is up),
 # not something that needs re-measuring: excluding axis 1 always leaves (0, 2), Motive's

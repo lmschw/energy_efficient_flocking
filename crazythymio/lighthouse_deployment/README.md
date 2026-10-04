@@ -1,5 +1,13 @@
 # Hebbian controller on Thymio + Crazyflie board + Lighthouse positioning
 
+> **This folder is fully separate from the OptiTrack deployment**
+> (`ants26_replication/hardware_deployment/`). It has its own `controller_config.py`,
+> `pose_utils.py`, `hebbian_swarm_experiment.py`, sensing/controller/battery modules and genome
+> copies, and imports nothing from that folder (and vice versa; the OptiTrack folder is
+> unchanged from before the Lighthouse work). Never put both folders on the same `sys.path` --
+> they both define a module called `controller_config`. `test_offline.py` asserts the
+> isolation.
+
 Replaces the OptiTrack/`thymio_swarm_platform` stack with the CrazyThymio one (code from
 https://github.com/fudavd/CrazyThymio): every robot is a **Thymio + Raspberry Pi + Crazyflie
 board with a Lighthouse deck**. There is no central tracker or coordinator any more:
@@ -15,17 +23,20 @@ Lighthouse base stations --> Crazyflie board (own x, y, yaw)
                                Thymio motors / IR
 ```
 
-The controller code (`ants26_replication/hardware_deployment/`) is reused as is. What is new:
+The controller math is a copy of the OptiTrack deployment's (same genome format, same sensing, same safety layers); only the tracking layer differs. Files in this folder:
 
 | File | Purpose |
 |---|---|
-| `firmware/app_share_pos_hebbian/` | Crazyflie app: Lighthouse, broadcasts own *center* position, exposes neighbor positions to the Pi. **Replaces** upstream `app_share_pos` (that one only exposes pre-computed quadrant distances, not the bearings the Hebbian net needs). |
-| `hebbian/lighthouse_robot.py` | `LighthouseRobot`: same interface as the platform's `Robot` (`get_all_global_poses`, `drive`, `stop`, `proximity_horizontal`), backed by cflib + tdmclient. |
-| `hebbian/run_hebbian.py` | Per-robot launcher (+ `--check`, `--calibrate-heading`). |
-| `hebbian/test_offline.py` | Hardware-free wiring test. |
-| `pose_utils.py`, `controller_config.py` (in hardware_deployment) | New `POSE_SOURCE = "lighthouse"` branch (default stays `"optitrack"`, so old behaviour is unchanged). |
+| `../firmware/app_share_pos_hebbian/` | Crazyflie app: Lighthouse, broadcasts own *center* position, exposes neighbor positions to the Pi. **Replaces** upstream `app_share_pos` (that one only exposes pre-computed quadrant distances, not the bearings the Hebbian net needs). |
+| `controller_config.py` | **This deployment's own config**: architecture/battery/safety constants copied from the OptiTrack config, plus the Lighthouse hardware section (heading offsets, corridor, motor calibration, pose timeout). No OptiTrack axes/offsets. |
+| `pose_utils.py` | Lighthouse pose -> agents array (z-up, yaw-based heading; no OptiTrack outlier/stale detectors). |
+| `hebbian_swarm_experiment.py`, `sensor_model.py`, `hebbian_controller.py`, `motor_utils.py`, `wind_battery_model.py` | Copies of the OptiTrack deployment's modules; edit here without touching the OptiTrack folder. |
+| `plain_seed123_clamped_best.npy`, `plain_seed123_best.npy` | Genome copies. |
+| `lighthouse_robot.py` | `LighthouseRobot`: same interface as the platform's `Robot` (`get_all_global_poses`, `drive`, `stop`, `proximity_horizontal`), backed by cflib + tdmclient. |
+| `run_hebbian.py` | Per-robot launcher (+ `--check`, `--calibrate-heading`). |
+| `test_offline.py` | Hardware-free wiring + isolation test. |
 
-**Status: written and checked offline only** (`venv/bin/python crazythymio/hebbian/test_offline.py`
+**Status: written and checked offline only** (`venv/bin/python crazythymio/lighthouse_deployment/test_offline.py`
 passes; the firmware passes a syntax check against stub headers but has *not* been compiled
 or flashed; nothing has run on real hardware). Expect to debug on first contact.
 
@@ -89,23 +100,23 @@ cd ~/Desktop/crazy_thymio && git clone <this repo> energy_efficient_flocking
 source .venv/bin/activate
 pip install numpy cflib tdmclient
 ```
-(the Pi only needs `ants26_replication/hardware_deployment/` + `crazythymio/`; no scipy,
+(the Pi only needs `crazythymio/lighthouse_deployment/` + `crazythymio/firmware/`; no scipy,
 matplotlib etc.). Plug the Crazyflie board into the Pi by USB (the `usb://0` uri).
 
 ## Verification, in this order
 
-Run from `energy_efficient_flocking/crazythymio/`; replace hostnames/ids with yours. Use the
+Run from `energy_efficient_flocking/crazythymio/lighthouse_deployment/`; replace hostnames/ids with yours. Use the
 same `--hostnames/--ids` on every Pi.
 
 ```bash
 H="--hostnames thymio-01,thymio-02,thymio-03 --ids 1,2,3"
 ```
 
-**A. Offline plumbing (any machine):** `venv/bin/python crazythymio/hebbian/test_offline.py`
+**A. Offline plumbing (any machine):** `python test_offline.py`
 
 **B. Tracking + radio table.** Robots standing still, all powered, motors off:
 ```bash
-python hebbian/run_hebbian.py --self-hostname thymio-01 $H --check
+python run_hebbian.py --self-hostname thymio-01 $H --check
 ```
 Prints own `(x, y, z, yaw)`, the neighbor table (radio id -> position) and IR values for 20 s.
 Check: (i) own position changes when you carry the robot, (ii) every *other* robot shows up in
@@ -115,7 +126,7 @@ the neighbors, and their positions agree with what each of them prints as its ow
 
 **C. Heading offset + speed calibration, one robot at a time** (0.5 m clear path ahead):
 ```bash
-python hebbian/run_hebbian.py --self-hostname thymio-01 $H --calibrate-heading
+python run_hebbian.py --self-hostname thymio-01 $H --calibrate-heading
 ```
 Drives straight 4 s and prints `--heading-offsets thymio-01=<rad>` (board x-axis vs. Thymio
 front; ~0 or ~±pi/2 depending on mounting) and a suggested `MOTOR_UNITS_PER_MPS`. Collect
@@ -135,8 +146,8 @@ watch the printed motor commands respond to moving the other robot.
 
 On every Pi (same arguments except `--self-hostname`):
 ```bash
-python hebbian/run_hebbian.py --self-hostname thymio-01 $H \
-   --genome ../ants26_replication/hardware_deployment/plain_seed123_clamped_best.npy \
+python run_hebbian.py --self-hostname thymio-01 $H \
+   --genome plain_seed123_clamped_best.npy \
    --origin 2.0 1.5 --corridor-y -1.5 1.5 \
    --heading-offsets thymio-01=0.03,thymio-02=-0.10,thymio-03=0.00 \
    --duration 600
@@ -149,7 +160,7 @@ python hebbian/run_hebbian.py --self-hostname thymio-01 $H \
   battery, front_d, ..., v, w, left, right`; `raw_x/y/z` and `q*` are now the Lighthouse
   position/yaw quaternion). The existing `hardware_transfer_test` analysis expects the
   platform's aggregated format -- merge the per-robot CSVs by `timestamp` if you reuse it.
-* `BATTERY_MODE` stays as in `controller_config.py` (`simulated` by default; override with
+* `BATTERY_MODE` is set in this folder's `controller_config.py` (`simulated` by default; override with
   `--battery-mode none` together with a `_nosensor` genome).
 * Safety layers that carry over unchanged: agent-safety speed clamp, wall governor (if
   `--corridor-y`), IR backoff (`IR_OBSTACLE_THRESHOLD` is still an uncalibrated
@@ -166,6 +177,5 @@ python hebbian/run_hebbian.py --self-hostname thymio-01 $H \
   the OptiTrack-only stale/up-axis detectors are skipped in Lighthouse mode.
 * Position latency: board (50 ms) + radio + 100 ms log period + 0.5 s control tick;
   neighbors are therefore up to ~0.2 s old.
-* The old MATLAB-style calibration constants in `controller_config.py`
-  (`HEADING_OFFSET_RAD`, `MOTOR_UNITS_PER_MPS`, corridor) are OptiTrack-session values;
-  recalibrate as in steps C and D rather than trusting them.
+* `MOTOR_UNITS_PER_MPS` was carried over from the OptiTrack config (stale there too);
+  recalibrate as in step C. Heading offsets and corridor start empty/disabled.
