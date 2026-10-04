@@ -150,6 +150,7 @@ class LJBaselineExperiment:
 
     async def _tick(self):
         self._tick_count += 1
+        scale_corridor = scale_agent = 1.0
         poses = await self.robot.get_all_global_poses()
         agents, self_index = poses_to_agents(poses, self.hostnames, self.self_hostname)
         current_position = (float(agents[self_index, 0]), float(agents[self_index, 1]))
@@ -181,6 +182,7 @@ class LJBaselineExperiment:
             self._prev_position = current_position if self_tracked else None
 
         v, w = _lj_velocity_command(agents, self_index)
+        v_policy = float(v)    # logged: LJ law output before any deployment-side reflex/governor
 
         # Only used here, to feed the same OptiTrack-derived obstacle-backoff reflex the
         # Hebbian deployment uses -- the LJ control law itself never sees these.
@@ -188,11 +190,13 @@ class LJBaselineExperiment:
         front_d, back_d = float(sensor_inputs[0, self_index]), float(sensor_inputs[2, self_index])
         v = _apply_obstacle_backoff(self, v, front_d, back_d)
 
-        if self_tracked:
-            v *= min(_corridor_scale(agents, self_index, v),
-                     _agent_safety_speed_scale(agents, self_index))
-        else:
-            v = max(-cfg.UNTRACKED_SAFE_V_CAP, min(cfg.UNTRACKED_SAFE_V_CAP, v))
+        if cfg.SAFETY_LAYERS_ENABLED:
+            if self_tracked:
+                scale_corridor = _corridor_scale(agents, self_index, v)
+                scale_agent = _agent_safety_speed_scale(agents, self_index)
+                v *= min(scale_corridor, scale_agent)
+            else:
+                v = max(-cfg.UNTRACKED_SAFE_V_CAP, min(cfg.UNTRACKED_SAFE_V_CAP, v))
 
         ir = await self.robot.proximity_horizontal()
         v = _apply_ir_backoff(v, ir)
@@ -213,9 +217,14 @@ class LJBaselineExperiment:
                        "raw_x": raw_position[0], "raw_y": raw_position[1], "raw_z": raw_position[2],
                        "qx": raw_orientation[0], "qy": raw_orientation[1],
                        "qz": raw_orientation[2], "qw": raw_orientation[3],
+                       "tracked": int(self_tracked),
+                       "n_neighbors_seen": sum(1 for h in self.hostnames
+                                               if h != self.self_hostname and poses.get(h) is not None),
                        "front_d": front_d, "back_d": back_d,
                        "ir_front_max": max(ir[0:5]), "ir_rear_max": max(ir[5:7])},
-                command={"v": float(v), "w": float(w), "left": left, "right": right},
+                command={"v": float(v), "w": float(w), "left": left, "right": right,
+                         "v_policy": v_policy, "scale_corridor": float(scale_corridor),
+                         "scale_agent": float(scale_agent)},
             )
         return v, w, left, right
 

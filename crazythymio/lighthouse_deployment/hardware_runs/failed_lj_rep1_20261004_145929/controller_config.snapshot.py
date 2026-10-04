@@ -78,9 +78,6 @@ CONTROL_TICK_SECONDS = 0.5
 WHEEL_RADIUS_M = 0.021
 WHEEL_DISTANCE_M = 0.085
 MAX_MOTOR_TARGET = 500       # raw Thymio motor units; clamped in motor_utils.py
-PRESERVE_TURN_ON_SATURATION = True
-# When v and w together exceed the wheels' range, keep the commanded turn rate and reduce the forward speed (see
-# motor_utils.py). False = clip each wheel independently (what the 2026-10-04 trial ran with).
 
 MOTOR_UNITS_PER_MPS = 2949.0
 # MEASURED 2026-10-04 with `run_hebbian.py --calibrate-heading` on all 7 robots (150 motor units for
@@ -122,14 +119,6 @@ CORRIDOR_SLOWDOWN_MARGIN_M = 0.5
 # sets them from --corridor-y. The genome has no wall sense of its own, so without this robots
 # drive into walls.
 
-SAFETY_LAYERS_ENABLED = False
-# MASTER SWITCH for the deployment-side safety layers in the experiment classes: the agent-safety speed clamp
-# (AGENT_SAFETY_CLAMP_*), the x/y wall governors (CORRIDOR_*), and the slow crawl when the own pose is lost
-# (UNTRACKED_SAFE_V_CAP). OFF since 2026-10-04 on request: robots run the raw controller output, nothing else. The
-# obstacle-backoff and IR-backoff reflexes have their own switches (both off). Turn back on with --safety on
-# (run_hebbian.py) or SAFETY=1 (tools/run_swarm.sh / experiment_schedule.sh). With it OFF the robots can leave the
-# arena (LJ pulls toward -x at ~0.15 m/s) and collide -- supervise, keep tools/stop_all.sh ready.
-
 # =====================================================================================
 # --- Inter-agent safety clamp (deployment-ENFORCED, same as the OptiTrack deployment) -
 # =====================================================================================
@@ -158,11 +147,7 @@ AGENT_SAFETY_CLAMP_INNER_GAP = 0.05   # gap [m] at which forward speed reaches z
 # while active, and composes with AGENT_SAFETY_CLAMP/corridor scaling applied afterward
 # in hebbian_swarm_experiment.py (a [0,1] scale can weaken the backoff but never flips
 # its sign, so a robot backing away never gets turned back around by those clamps).
-OBSTACLE_BACKOFF_ENABLED = False
-# DISABLED 2026-10-04 (Lighthouse deployment only). In the first 7-robot LJ baseline run (r0 = 0.5 m) the swarm sat inside this
-# reflex's trigger zone (neighbour within OBSTACLE_TRIGGER_DIST ~0.5 m) for 52-86% of all ticks; it kept overriding v with
-# +/-OBSTACLE_BACKOFF_SPEED, so the LJ law's ~+0.12 m/s was commanded as ~+0.03 m/s and the swarm stalled at x~0.
-# Collision protection that remains: the agent-safety speed clamp (gap 0.30 -> 0.05 m) and the direction-aware wall governor.
+OBSTACLE_BACKOFF_ENABLED = True
 OBSTACLE_TRIGGER_DIST = -0.5    # front_d/back_d threshold, in sensor_model.py's
                                 # normalized units (-1.0=contact, +1.0=nothing sensed) --
                                 # more negative is more conservative (reacts only when

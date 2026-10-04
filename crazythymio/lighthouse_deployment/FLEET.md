@@ -37,3 +37,15 @@ Run: `CORRIDOR_X="<xmin> <xmax>" tools/run_swarm.sh "3 4" 60 lj` (robots, second
 Stop: `tools/stop_all.sh`. The LJ baseline pulls the swarm toward -x at ~0.15 m/s (constant goal force), so set
 CORRIDOR_X before using it. IR backoff is disabled (IR_BACKOFF_ENABLED = False in controller_config.py);
 the x governor is new (CORRIDOR_X_MIN/MAX, --corridor-x). Robot 2's board was re-mounted and re-calibrated (offset now in controller_config.py).
+
+## Experiments (all 7 robots)
+`tools/experiment.sh <lj|hebbian> <reps> <duration_s> [genome]` -- per repetition: you place the robots (by eye, see the printed instructions; `tools/layout_check.py` + `layout_7.txt` still exist as an optional check),
+`tools/run_swarm.sh` runs all 7 with a common start
+time and collects everything into `hardware_runs/<condition>_rep<k>_<stamp>/` together with `run_info.json` and
+snapshots of controller_config.py, the Lighthouse geometry and the heading calibration. Emergency stop: Ctrl-C or
+`tools/stop_all.sh`. Conditions of the paper: `lj`, `hebbian plain_seed123_best.npy` (unclamped),
+`hebbian plain_seed123_clamped_best.npy`. Baseline LJ pair test (robots 3+4, 2026-10-04): both travelled
+x +1.27 -> -1.64 (path ~3.4 m, mean spacing 0.72 m, closest 0.47 m).
+
+Timing from the 2-robot tests (2026-10-04): LJ reaches the -x limit in ~25 s, clamped genome ~35 s, unclamped genome
+had not arrived after 60 s -> common duration for all conditions: 60 s (compare time-to-end and distance at fixed times).

@@ -51,9 +51,14 @@ async def main():
     assert abs(agents[0, 2]) < 1e-6, "facing +y must be sim heading 0"
     assert abs(agents[1, 1] - 0.5) < 1e-6
     print("ticks ok; last command", v, w, l, r)
-    robot.board.own_time = 0  # stale -> untracked: must still run, capped slow
+    robot.board.own_time = 0  # stale -> untracked: must still run
+    cfg.SAFETY_LAYERS_ENABLED = True       # with the safety layers ON the crawl cap applies ...
     v, *_ = await exp._tick()
     assert abs(v) <= cfg.UNTRACKED_SAFE_V_CAP + 1e-9
+    cfg.SAFETY_LAYERS_ENABLED = False      # ... and with them OFF (the current default) it must not
+    exp2 = HebbianSwarmExperiment(robot, {"genome_path": path, "hostnames": list(ids), "self_hostname": "a"})
+    v2, *_ = await exp2._tick()
+    print("untracked tick, safety OFF: v =", round(v2, 3), "(not capped)")
     os.remove(path)
     print("OFFLINE TEST PASSED")
 

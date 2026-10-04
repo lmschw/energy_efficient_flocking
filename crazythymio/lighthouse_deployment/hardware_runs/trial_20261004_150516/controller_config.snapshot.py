@@ -78,9 +78,6 @@ CONTROL_TICK_SECONDS = 0.5
 WHEEL_RADIUS_M = 0.021
 WHEEL_DISTANCE_M = 0.085
 MAX_MOTOR_TARGET = 500       # raw Thymio motor units; clamped in motor_utils.py
-PRESERVE_TURN_ON_SATURATION = True
-# When v and w together exceed the wheels' range, keep the commanded turn rate and reduce the forward speed (see
-# motor_utils.py). False = clip each wheel independently (what the 2026-10-04 trial ran with).
 
 MOTOR_UNITS_PER_MPS = 2949.0
 # MEASURED 2026-10-04 with `run_hebbian.py --calibrate-heading` on all 7 robots (150 motor units for

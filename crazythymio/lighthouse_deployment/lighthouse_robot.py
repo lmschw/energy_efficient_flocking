@@ -69,6 +69,15 @@ class ThymioLink:
             self.client.process_waiting_messages()
             await asyncio.sleep(0.01)
 
+    async def set_top_led(self, r, g, b):
+        """Top LED via a one-line Aseba program (survives the Thymio's built-in behaviours); r, g, b in 0..32."""
+        try:
+            err = await self.node.compile(f"call leds.top({int(r)},{int(g)},{int(b)})")
+            if err is None:
+                await self.node.run()
+        except Exception as e:      # an LED must never stop a run
+            print("top LED not set:", e, flush=True)
+
     async def drive(self, left, right):
         await asyncio.wait_for(self.node.set_variables({
             "motor.left.target": [int(left)], "motor.right.target": [int(right)]}), timeout=2.0)
@@ -181,6 +190,7 @@ class LighthouseRobot:
 
     async def connect(self):
         await self.thymio.connect()
+        await self.thymio.set_top_led(0, 0, 0)   # clears a red 'this robot failed' marker from a previous attempt
         self.board.connect()
 
     def own_pose_record(self):

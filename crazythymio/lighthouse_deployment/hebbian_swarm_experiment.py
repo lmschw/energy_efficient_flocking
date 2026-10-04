@@ -269,6 +269,7 @@ class HebbianSwarmExperiment:
         local_test_harness.py can drive it directly without needing an infinite loop or
         real hardware."""
         self._tick_count += 1
+        scale_corridor = scale_agent = 1.0     # logged; stay 1.0 when untracked (no clamp computable)
         poses = await self.robot.get_all_global_poses()
         agents, self_index = poses_to_agents(poses, self.hostnames, self.self_hostname)
         current_position = (float(agents[self_index, 0]), float(agents[self_index, 1]))
@@ -343,29 +344,32 @@ class HebbianSwarmExperiment:
         _debug_right_d, _debug_left_d = float(x_in[4]), float(x_in[6])
 
         v, w, self.w1, self.w2, self.w3 = hebbian_step(x_in, self.w1, self.w2, self.w3, self.rules)
+        v_policy = float(v)    # logged: what the network asked for, before any deployment-side reflex/governor
         v = _apply_obstacle_backoff(self, v, _debug_front_d, _debug_back_d)
-        if self_tracked:
-            # min(), not product -- matches simulation_hebbian.py's own
-            # vel[:,0] *= np.minimum(agent_scale, wall_scale) combination exactly: whichever
-            # constraint (nearest neighbor or nearest wall) is more restrictive wins, rather
-            # than compounding both into an even smaller scale.
-            v *= min(_corridor_scale(agents, self_index, v),
-                     _agent_safety_speed_scale(agents, self_index))
-        else:
-            # CANNOT compute _agent_safety_speed_scale/_corridor_speed_scale without a real
-            # position -- self is at pose_utils.py's (1e4,1e4) sentinel, which also makes
-            # every OTHER agent read as "far away" to THIS robot's own sensing (see
-            # sensor_model.py), so hebbian_step tends to output an open-field v here, not a
-            # braked one. Un-tracked used to mean UNCLAMPED (full v straight to the
-            # motors) -- confirmed from real trial data as a real collision mechanism:
-            # tracking degrades/drops exactly when robots cluster tightly (marker
-            # occlusion -- see pose_utils.py's stale-freeze/up-axis-outlier detectors), so
-            # the moment we can least verify it's safe to keep going is the same moment
-            # this branch used to apply NO speed limit at all. Not knowing where we are is
-            # itself a reason to slow down, not a reason to skip the clamp -- cap to a
-            # slow crawl instead (direction/w still untouched, same as every other
-            # deployment-only reflex here).
-            v = max(-cfg.UNTRACKED_SAFE_V_CAP, min(cfg.UNTRACKED_SAFE_V_CAP, v))
+        if cfg.SAFETY_LAYERS_ENABLED:
+            if self_tracked:
+                # min(), not product -- matches simulation_hebbian.py's own
+                # vel[:,0] *= np.minimum(agent_scale, wall_scale) combination exactly: whichever
+                # constraint (nearest neighbor or nearest wall) is more restrictive wins, rather
+                # than compounding both into an even smaller scale.
+                scale_corridor = _corridor_scale(agents, self_index, v)
+                scale_agent = _agent_safety_speed_scale(agents, self_index)
+                v *= min(scale_corridor, scale_agent)
+            else:
+                # CANNOT compute _agent_safety_speed_scale/_corridor_speed_scale without a real
+                # position -- self is at pose_utils.py's (1e4,1e4) sentinel, which also makes
+                # every OTHER agent read as "far away" to THIS robot's own sensing (see
+                # sensor_model.py), so hebbian_step tends to output an open-field v here, not a
+                # braked one. Un-tracked used to mean UNCLAMPED (full v straight to the
+                # motors) -- confirmed from real trial data as a real collision mechanism:
+                # tracking degrades/drops exactly when robots cluster tightly (marker
+                # occlusion -- see pose_utils.py's stale-freeze/up-axis-outlier detectors), so
+                # the moment we can least verify it's safe to keep going is the same moment
+                # this branch used to apply NO speed limit at all. Not knowing where we are is
+                # itself a reason to slow down, not a reason to skip the clamp -- cap to a
+                # slow crawl instead (direction/w still untouched, same as every other
+                # deployment-only reflex here).
+                v = max(-cfg.UNTRACKED_SAFE_V_CAP, min(cfg.UNTRACKED_SAFE_V_CAP, v))
 
         ir = await self.robot.proximity_horizontal()
         v = _apply_ir_backoff(v, ir)
@@ -387,11 +391,17 @@ class HebbianSwarmExperiment:
                        "raw_x": raw_position[0], "raw_y": raw_position[1], "raw_z": raw_position[2],
                        "qx": raw_orientation[0], "qy": raw_orientation[1],
                        "qz": raw_orientation[2], "qw": raw_orientation[3],
-                       "n_agents_seen": _debug_n_agents, "front_d": _debug_front_d,
+                       "n_agents_seen": _debug_n_agents,
+                       "tracked": int(self_tracked),
+                       "n_neighbors_seen": sum(1 for h in self.hostnames
+                                               if h != self.self_hostname and poses.get(h) is not None),
+                       "front_d": _debug_front_d,
                        "back_d": _debug_back_d, "right_d": _debug_right_d,
                        "left_d": _debug_left_d,
                        "ir_front_max": max(ir[0:5]), "ir_rear_max": max(ir[5:7])},
-                command={"v": float(v), "w": float(w), "left": left, "right": right},
+                command={"v": float(v), "w": float(w), "left": left, "right": right,
+                         "v_policy": v_policy, "scale_corridor": float(scale_corridor),
+                         "scale_agent": float(scale_agent)},
             )
         return v, w, left, right
 
