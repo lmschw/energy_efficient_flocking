@@ -113,7 +113,7 @@ class LighthouseLink:
         self.neighbors = {}                 # radio id (1..255) -> (x_m, y_m), only fresh ones
         self._slots = {}
 
-    def connect(self, reset_estimator=True):
+    def connect(self, reset_estimator=True, board_offset=None):
         import cflib.crtp
         from cflib.crazyflie import Crazyflie
         from cflib.crazyflie.syncCrazyflie import SyncCrazyflie
@@ -126,6 +126,15 @@ class LighthouseLink:
         # The firmware only picks the Kalman estimator (the one that fuses Lighthouse) by
         # itself when it detects a positioning deck at boot; force it so a missed detection is
         # not silently masked by the complementary estimator (which ignores Lighthouse).
+        if board_offset is not None:
+            # Requires the Hebbian firmware WITH the hebb.offx/offy parameters (2026-10-04). Refuse to run without them:
+            # older firmware broadcasts a centre that is ~9 cm wrong and swings with every turn.
+            if "hebb" not in cf.param.toc.toc:
+                raise SystemExit("Crazyflie firmware has no hebb.offx/offy parameters -- flash cf2_hebbian_autodetect_offsetparam.bin")
+            cf.param.set_value("hebb.offx", f"{board_offset[0]:.4f}")
+            cf.param.set_value("hebb.offy", f"{board_offset[1]:.4f}")
+            time.sleep(0.2)
+            self.board_offset = (float(cf.param.get_value("hebb.offx")), float(cf.param.get_value("hebb.offy")))
         cf.param.set_value("stabilizer.estimator", "2")
         time.sleep(0.2)
         if reset_estimator:
@@ -135,7 +144,7 @@ class LighthouseLink:
             cf.param.set_value("kalman.resetEstimation", "0")
             time.sleep(1.0)
 
-        own = LogConfig(name="own", period_in_ms=100)
+        own = LogConfig(name="own", period_in_ms=cfg.LOG_PERIOD_MS)
         for var in ("ctr.x", "ctr.y"):
             own.add_variable(var, "float")
         for var in ("stateEstimate.z", "stateEstimate.yaw"):
@@ -145,14 +154,14 @@ class LighthouseLink:
         own.start()
 
         for name, slots in (("nbA", range(1, 6)), ("nbB", range(6, 11))):
-            cfg = LogConfig(name=name, period_in_ms=100)
+            lc = LogConfig(name=name, period_in_ms=cfg.LOG_PERIOD_MS)
             for k in slots:
-                cfg.add_variable(f"{name}.x{k}", "int16_t")
-                cfg.add_variable(f"{name}.y{k}", "int16_t")
-                cfg.add_variable(f"{name}.id{k}", "uint8_t")
-            cfg.data_received_cb.add_callback(self._on_neighbors)
-            cf.log.add_config(cfg)
-            cfg.start()
+                lc.add_variable(f"{name}.x{k}", "int16_t")
+                lc.add_variable(f"{name}.y{k}", "int16_t")
+                lc.add_variable(f"{name}.id{k}", "uint8_t")
+            lc.data_received_cb.add_callback(self._on_neighbors)
+            cf.log.add_config(lc)
+            lc.start()
         self._slots = {}        # table slot -> (robot id or 0, x_m, y_m), updated per log block
 
     def _on_own(self, timestamp, data, logconf):
@@ -191,7 +200,8 @@ class LighthouseRobot:
     async def connect(self):
         await self.thymio.connect()
         await self.thymio.set_top_led(0, 0, 0)   # clears a red 'this robot failed' marker from a previous attempt
-        self.board.connect()
+        self.board.connect(board_offset=cfg.BOARD_OFFSET_M.get(self.self_hostname,
+                                                            cfg.BOARD_OFFSET_DEFAULT_M))
 
     def own_pose_record(self):
         """(x, y, z, yaw_rad) in the origin-shifted frame, or None if the board has not

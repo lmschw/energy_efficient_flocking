@@ -4,7 +4,7 @@
  * https://github.com/tugayalperen/CrazyThymio-firmware (GPL-3.0, Bitcraze AB / the CrazyThymio
  * authors), reduced to what the Hebbian controller needs: instead of computing the 4-quadrant
  * distance/heading itself, this app hands the Raspberry Pi
- *   - the robot's own CENTER position (board position + mounting offset, see BOARD_OFFSET_*),
+ *   - the robot's own CENTER position (board position + mounting offset, see board_offset_x/y, params hebb.offx/offy),
  *   - the latest position of every other robot heard over the radio (P2P broadcast),
  * and the Pi computes range/bearing sensing exactly as the simulation does
  * (ants26_replication/hardware_deployment/sensor_model.py).
@@ -31,6 +31,7 @@
 #include "radiolink.h"
 #include "configblock.h"
 #include "log.h"
+#include "param.h"
 
 #define DEBUG_MODULE "HEBBIAN"
 #include "debug.h"
@@ -42,8 +43,12 @@
 
 // Position of the Crazyflie board relative to the Thymio's center, in the board frame
 // (x forward, y left), in metres. Values of the upstream CrazyThymio rig -- MEASURE on yours.
-#define BOARD_OFFSET_X (-0.09f)
-#define BOARD_OFFSET_Y (0.04f)
+// Vector from the Crazyflie board to the Thymio's centre of rotation, in the board frame (x forward, y left), metres.
+// Runtime PARAMETERS (group "hebb": offx, offy) -- each Pi sets its own robot's measured value at start-up
+// (crazythymio/lighthouse_deployment/controller_config.py BOARD_OFFSET_M, measured with tools/measure_offset.sh).
+// The default is the fleet median measured 2026-10-04. The upstream rig's (-0.09, +0.04) was ~9 cm wrong on every robot.
+static float board_offset_x = -0.0025f;
+static float board_offset_y = 0.021f;
 
 typedef struct {
   uint8_t id;
@@ -111,6 +116,11 @@ void appMain()
   uint8_t my_id = (uint8_t)(configblockGetRadioAddress() & 0xff);
   DEBUG_PRINT("Hebbian share_pos app, radio id %d\n", my_id);
 
+  PARAM_GROUP_START(hebb)
+  PARAM_ADD(PARAM_FLOAT, offx, &board_offset_x)
+  PARAM_ADD(PARAM_FLOAT, offy, &board_offset_y)
+  PARAM_GROUP_STOP(hebb)
+
   LOG_GROUP_START(ctr)
   LOG_ADD(LOG_FLOAT, x, &ctr_x)
   LOG_ADD(LOG_FLOAT, y, &ctr_y)
@@ -165,8 +175,8 @@ void appMain()
     float yaw = logGetFloat(idYaw) * 0.0174532f;   // degrees -> rad
     float bx = logGetFloat(idX);
     float by = logGetFloat(idY);
-    ctr_x = bx + cosf(yaw) * BOARD_OFFSET_X - sinf(yaw) * BOARD_OFFSET_Y;
-    ctr_y = by + sinf(yaw) * BOARD_OFFSET_X + cosf(yaw) * BOARD_OFFSET_Y;
+    ctr_x = bx + cosf(yaw) * board_offset_x - sinf(yaw) * board_offset_y;
+    ctr_y = by + sinf(yaw) * board_offset_x + cosf(yaw) * board_offset_y;
 
     self.x = ctr_x;
     self.y = ctr_y;

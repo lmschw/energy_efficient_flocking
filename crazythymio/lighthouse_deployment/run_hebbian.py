@@ -62,6 +62,11 @@ def parse_args():
                    help="Lighthouse coordinates [m] of the arena center = simulation (0, 0)")
     p.add_argument("--corridor-y", type=float, nargs=2, metavar=("MIN", "MAX"),
                    help="arena y-limits in the shifted frame; enables the wall slow-down governor")
+    p.add_argument("--measure-offset", action="store_true",
+                   help="turn in place in 45 deg steps through a full circle and fit where the board sits relative to the "
+                        "Thymio's centre of rotation (the firmware's BOARD_OFFSET)")
+    p.add_argument("--latency-test", action="store_true",
+                   help="measure the total delay from a motor command to the first visible change in the reported heading")
     p.add_argument("--calibrate-turn", action="store_true",
                    help="spin in place at a few motor levels and report realised vs nominal turn rate (robot stays put)")
     p.add_argument("--lj-r0", type=float, help="override the LJ preferred spacing r0 [m] (paper: 0.7); LJ controller only")
@@ -69,6 +74,7 @@ def parse_args():
                    help="with --lj-r0: also scale everything else that has units of length or force in the LJ law by "
                         "alpha = r0/0.7 (epsilon, cutoff radius, alignment radius), so the force at every scaled distance "
                         "equals the paper's and the gains K1, K2, k_goal stay valid")
+    p.add_argument("--log-period-ms", type=int, help="override controller_config.LOG_PERIOD_MS")
     p.add_argument("--safety", choices=["on", "off"], help="deployment-side safety layers (agent clamp, wall governors, untracked "
                    "crawl); default: controller_config.SAFETY_LAYERS_ENABLED (currently off)")
     p.add_argument("--corridor-x", type=float, nargs=2, metavar=("MIN", "MAX"),
@@ -112,6 +118,8 @@ def apply_config(args):
             cfg.LJ_R_CUT *= alpha
             cfg.LJ_R_ALIGN *= alpha
         cfg.LJ_R0 = args.lj_r0
+    if args.log_period_ms:
+        cfg.LOG_PERIOD_MS = args.log_period_ms
     if args.safety:
         cfg.SAFETY_LAYERS_ENABLED = args.safety == "on"
     if args.battery_mode:
@@ -225,6 +233,85 @@ async def calibrate_turn(robot, args):
           f"turn_ratio_90={results[2][3]:.3f} mean={mean_ratio:.3f}")
 
 
+async def measure_offset(robot, args):
+    """The firmware reports c = board + R(yaw) * e_fw (e_fw = BOARD_OFFSET_X/Y, board frame). The robot turns IN PLACE about
+    its true centre p, so with the true offset e_true:  c(yaw) = p + R(yaw) * (e_fw - e_true).  Turning in 45 deg steps
+    through a full circle and fitting p and d = e_fw - e_true by least squares gives e_true = e_fw - d."""
+    import numpy as np
+    E_FW = getattr(robot.board, "board_offset", (-0.09, 0.04))   # what the firmware applies right now (hebb.offx/offy)
+    pts = []
+    for k in range(9):
+        p = await steady_pose(robot, window_s=1.5)
+        if p is None:
+            raise SystemExit("No steady pose -- stopping (nothing else is driven).")
+        pts.append((p[0], p[1], p[3]))
+        print(f"  stop {k + 1}/9: reported centre ({p[0]:+.3f}, {p[1]:+.3f})  board yaw {math.degrees(p[3]):+5.0f} deg", flush=True)
+        if k == 8:
+            break
+        try:
+            await robot.drive(-50, 50)
+            await asyncio.sleep(1.95)            # ~45 deg at the measured ~0.40 rad/s for +-50 units
+        finally:
+            await robot.stop()
+        await asyncio.sleep(0.8)
+    A = []; b = []
+    for x, y, yw in pts:
+        c, s_ = math.cos(yw), math.sin(yw)
+        A.append([1, 0, c, -s_]); b.append(x)
+        A.append([0, 1, s_, c]); b.append(y)
+    sol, *_ = np.linalg.lstsq(np.array(A), np.array(b), rcond=None)
+    px, py, dx, dy = sol
+    res = np.array(b) - np.array(A) @ sol
+    ex, ey = E_FW[0] - dx, E_FW[1] - dy
+    yaws = sorted(math.degrees(p[2]) % 360 for p in pts)
+    cover = 360 - max((yaws[(i + 1) % len(yaws)] - yaws[i]) % 360 for i in range(len(yaws)))
+    print(f"  centre of rotation ({px:+.3f}, {py:+.3f}); fit residual {np.sqrt((res ** 2).mean()) * 100:.1f} cm; "
+          f"headings covered {cover:.0f} deg")
+    print(f"  firmware offset now ({E_FW[0]:+.3f}, {E_FW[1]:+.3f}) m  ->  TRUE board offset ({ex:+.3f}, {ey:+.3f}) m "
+          f"(board frame: x forward, y left); current error {math.hypot(dx, dy) * 100:.1f} cm")
+    print(f"RESULT {args.self_hostname} board_offset_x={ex:.4f} board_offset_y={ey:.4f} "
+          f"error_cm={math.hypot(dx, dy) * 100:.1f} residual_cm={np.sqrt((res ** 2).mean()) * 100:.1f} coverage_deg={cover:.0f}")
+
+
+async def latency_test(robot, args):
+    """Robot stationary -> command an in-place spin at a known time -> watch the REPORTED heading (the same data the
+    controller uses) -> fit a line to the turning part and extrapolate back to the baseline: the time where that line
+    starts is the total dead time (command -> TDM -> motor -> wheels -> Lighthouse/Kalman -> USB log -> Pi)."""
+    import statistics
+    u = 90
+    w_nom = 2.0 * u / (cfg.MOTOR_UNITS_PER_MPS * cfg.WHEEL_DISTANCE_M)
+    deads = []
+    for rep, sign in enumerate((1, -1, 1, -1)):
+        if await steady_pose(robot) is None:
+            raise SystemExit("No steady pose -- nothing was driven.")
+        samples = []
+        last_t = None
+        t_cmd = time.time()
+        await robot.drive(-sign * u, sign * u)
+        while time.time() - t_cmd < 1.2:
+            if robot.board.own_time != last_t and robot.board.own:
+                last_t = robot.board.own_time
+                samples.append((robot.board.own_time - t_cmd, math.radians(robot.board.own["stateEstimate.yaw"])))
+            await asyncio.sleep(0.002)
+        await robot.stop()
+        await asyncio.sleep(1.0)
+        t = [s[0] for s in samples]
+        y = [math.atan2(math.sin(s[1] - samples[0][1]), math.cos(s[1] - samples[0][1])) * sign for s in samples]
+        base = [yy for tt, yy in zip(t, y) if tt < 0.03] or [0.0]
+        b = statistics.mean(base)
+        pts = [(tt, yy) for tt, yy in zip(t, y) if math.radians(4) < yy - b < math.radians(30)]
+        if len(pts) < 3:
+            print(f"  spin {rep + 1}: too few turning samples ({len(pts)})"); continue
+        mt = statistics.mean(p[0] for p in pts); my = statistics.mean(p[1] for p in pts)
+        slope = sum((p[0] - mt) * (p[1] - my) for p in pts) / sum((p[0] - mt) ** 2 for p in pts)
+        dead = mt - (my - b) / slope
+        deads.append(dead)
+        print(f"  spin {rep + 1}: dead time {dead * 1000:5.0f} ms, turn rate once moving {slope:.2f} rad/s (nominal {w_nom:.2f}), "
+              f"{len(samples)} heading samples in 1.2 s (log period {cfg.LOG_PERIOD_MS} ms)")
+    if deads:
+        print(f"RESULT {args.self_hostname} dead_time_ms={statistics.median(deads) * 1000:.0f} log_period_ms={cfg.LOG_PERIOD_MS}")
+
+
 async def main():
     args = parse_args()
     apply_config(args)
@@ -233,6 +320,15 @@ async def main():
     assert len(hostnames) == len(ids) and args.self_hostname in hostnames
     assert len(set(ids)) == len(ids) and all(1 <= i <= 255 for i in ids), "ids must be unique, 1..255"
 
+    # ONE controller per Pi: a second instance would fight over the Thymio lock and break the first one's connection
+    # (seen: the first then could not stop its motors at the end of a run and the robot kept driving at full speed).
+    import fcntl
+    global _instance_lock
+    _instance_lock = open("/tmp/run_hebbian.lock", "w")
+    try:
+        fcntl.flock(_instance_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        raise SystemExit("another run_hebbian.py is already running on this Pi -- refusing to start a second one")
     robot = LighthouseRobot(args.self_hostname, dict(zip(hostnames, ids)), args.uri, tuple(args.origin))
     await robot.connect()
     try:
@@ -255,6 +351,12 @@ async def main():
                         print(f"LAYOUT {host} {by_id[rid][0] - 0:+.3f} {by_id[rid][1] - 0:+.3f}")
                     else:
                         print(f"LAYOUT {host} MISSING")
+            return
+        if args.measure_offset:
+            await measure_offset(robot, args)
+            return
+        if args.latency_test:
+            await latency_test(robot, args)
             return
         if args.calibrate_turn:
             await calibrate_turn(robot, args)
@@ -281,17 +383,17 @@ async def main():
         # starts with an unconverged pose broadcasts a wrong position to everyone -- seen: y = +7 m at the start of a
         # run). Require a STEADY pose before taking part; otherwise this robot sits the run out.
         print("waiting for a steady Lighthouse pose ...", flush=True)
-        wait_s = 90.0 if args.go_file else 25.0     # under the handshake nobody has started yet, so slow robots can take their time
+        wait_s = 1800.0 if args.go_file else 25.0   # under the handshake nobody has started yet; the operator may still be placing robots
         if await steady_pose(robot, timeout_s=wait_s) is None:
             raise SystemExit(f"no steady Lighthouse pose within {wait_s:.0f} s -- this robot does NOT take part in the run")
         if args.go_file:
             if args.ready_file:
                 open(args.ready_file, "w").write("ready\n")
             print("READY -- waiting for the go signal", flush=True)
-            t_wait = time.time() + 180.0
+            t_wait = time.time() + 1800.0
             while not os.path.exists(args.go_file):
                 if time.time() > t_wait:
-                    raise SystemExit("no go signal within 180 s -- this robot does NOT take part in the run")
+                    raise SystemExit("no go signal within 30 min -- this robot does NOT take part in the run")
                 await asyncio.sleep(0.05)
             await asyncio.sleep(0.05)
             args.start_at, args.stop_at = [float(v) for v in open(args.go_file).read().split()[:2]]
@@ -315,8 +417,28 @@ async def main():
         print(f"running, logging to {log_path}  (Ctrl-C to stop)")
         await experiment.run()
     finally:
-        await robot.disconnect()
+        # make sure the motors are told to stop, but never hang here (a hung exit once left a robot driving)
+        for _ in range(3):
+            try:
+                await asyncio.wait_for(robot.stop(), timeout=2.0)
+                break
+            except Exception as e:
+                print("motor stop failed, retrying:", type(e).__name__, flush=True)
+        try:
+            await asyncio.wait_for(robot.disconnect(), timeout=5.0)
+        except Exception as e:
+            print("disconnect did not finish cleanly:", type(e).__name__, flush=True)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    code = 0
+    try:
+        asyncio.run(main())
+    except SystemExit as e:
+        print(e, flush=True)
+        code = 1
+    finally:
+        sys.stdout.flush()
+        # cflib / tdmclient leave non-daemon threads behind that can keep the interpreter alive forever after main()
+        # returned: exit hard so the process (and the launcher waiting for it) really ends.
+        os._exit(code)

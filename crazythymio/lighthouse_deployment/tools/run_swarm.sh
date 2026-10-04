@@ -39,11 +39,23 @@ launch() {   # $1 = robot number
   local n=$1 ip=${IPS[$1]}
   ssh $SSHO tugay@$ip "rm -f /tmp/ready_$STAMP /tmp/go_$STAMP; pgrep -f '[t]hymio-device-manager' >/dev/null || { setsid nohup flatpak run --command=thymio-device-manager org.mobsya.ThymioSuite > /tmp/tdm.log 2>&1 < /dev/null & sleep 8; }; cd ~/Desktop/crazy_thymio/lighthouse_deployment && ../.venv/bin/python -u run_hebbian.py --self-hostname robot-$n --hostnames $HOSTS --ids $IDS $CTRLARGS --corridor-y $CORRIDOR $XARGS --ready-file /tmp/ready_$STAMP --go-file /tmp/go_$STAMP --log-dir logs/$STAMP > /tmp/run_$STAMP.log 2>&1" &
 }
-declare -A TRIES
-for n in $ROBOTS; do TRIES[$n]=1; launch $n; done
+declare -A TRIES LAUNCHED
+for n in $ROBOTS; do TRIES[$n]=1; LAUNCHED[$n]=$(date +%s); launch $n; done
+# --- optional: the operator places the robots WHILE they connect / settle in the background (WAIT_FOR_ENTER=1)
+if [ "${WAIT_FOR_ENTER:-0}" = "1" ]; then
+  cat <<'MSG'
+
+Robots are connecting in the background. Place them by eye, deck up, lights off:
+  - at the +x end of the arena, centred across the width, every robot facing -x (Thymio front toward the far end),
+  - back row of 4 about a forearm apart (~40 cm gaps), front row of 3 staggered in between, ~40 cm ahead (toward -x),
+  - back row ~20 cm in from the +x edge, everyone clear of the sides. Some randomness is fine.
+Step out of the arena, then press Enter to start (Ctrl-C to stop).
+MSG
+  read -r _ </dev/tty
+fi
 # --- 2) wait until EVERY robot is READY. A robot whose program died is restarted (up to 3 starts in total). The run only
 #        goes ahead with ALL of them: if any robot is still not ready after 150 s the run is ABORTED before anybody moves.
-READY=""; FAILED=""; DEADLINE=$(( $(date +%s) + 150 ))
+READY=""; FAILED=""; DEADLINE=$(( $(date +%s) + 150 ))   # counted from Enter when WAIT_FOR_ENTER=1
 echo -n "waiting for all robots to get ready: "
 while :; do
   PENDING=""
@@ -52,7 +64,8 @@ while :; do
     st=$(ssh $SSHO tugay@${IPS[$n]} "if test -f /tmp/ready_$STAMP; then echo ready; elif pgrep -f '[r]un_hebbian.py --self-hostname robot-$n' >/dev/null; then echo wait; else echo dead; fi" 2>/dev/null)
     case "$st" in
       ready) READY="$READY $n"; echo -n "$n " ;;
-      dead)  if [ ${TRIES[$n]} -lt 3 ]; then TRIES[$n]=$(( ${TRIES[$n]} + 1 )); echo -n "[$n restarted] "; launch $n; PENDING="$PENDING $n"
+      dead)  if [ $(( $(date +%s) - ${LAUNCHED[$n]} )) -lt 20 ]; then PENDING="$PENDING $n"   # may simply not have started yet
+             elif [ ${TRIES[$n]} -lt 3 ]; then TRIES[$n]=$(( ${TRIES[$n]} + 1 )); LAUNCHED[$n]=$(date +%s); echo -n "[$n restarted] "; launch $n; PENDING="$PENDING $n"
              else FAILED="$FAILED $n"; echo -n "[$n FAILED] "; fi ;;
       *)     PENDING="$PENDING $n" ;;
     esac
@@ -64,10 +77,9 @@ while :; do
 done
 echo
 if [ -n "$FAILED" ]; then
-  echo "ABORTED -- run NOT started (all robots are required). Robots that are not ready -- their Thymio top LED is now RED:"
-  for n in $FAILED; do python3 "$HERE/tools/diagnose_robot.py" $n $STAMP --mark; done
+  echo "ABORTED -- run NOT started (all robots are required). Robots that are not ready:"
+  for n in $FAILED; do python3 "$HERE/tools/diagnose_robot.py" $n $STAMP; done
   "$HERE/tools/stop_all.sh" >/dev/null 2>&1; wait 2>/dev/null
-  echo "(the red LED goes off by itself when that robot starts again)"
   exit 2
 fi
 # --- 3) GO: one common start 8 s from now (per Pi: the same instant in ITS clock), stop = start + DUR
@@ -80,7 +92,16 @@ for n in $READY; do
   PIDS+=($!)
 done
 wait "${PIDS[@]}"
-wait; wait
+# WATCHDOG: 10 s after the common stop, any controller that is still running is killed and its motors are zeroed directly.
+sleep $(( START + DUR + 10 - $(date +%s) )) 2>/dev/null || true
+for n in $READY; do
+  left=$(ssh $SSHO tugay@${IPS[$n]} "pgrep -f '[r]un_hebbian.py --self-hostname robot-$n'" 2>/dev/null)
+  if [ -n "$left" ]; then
+    echo "WARNING: robot-$n's controller did not exit after the stop time -- killing it and zeroing its motors"
+    ssh $SSHO tugay@${IPS[$n]} "pkill -KILL -f '[r]un_hebbian.py'; sleep 0.5; cd ~/Desktop/crazy_thymio/lighthouse_deployment && timeout 15 ../.venv/bin/python tools/thymio_stop.py" 2>/dev/null
+  fi
+done
+wait
 echo "run finished; collecting logs"
 for n in $ROBOTS; do
   ip=${IPS[$n]}

@@ -229,13 +229,22 @@ class LJBaselineExperiment:
         return v, w, left, right
 
     async def run(self):
+        # FIXED-RATE loop: one tick every CONTROL_TICK_SECONDS measured from tick START to tick START, like the simulation's
+        # dt. (Sleeping CONTROL_TICK_SECONDS AFTER each tick made the real period ~0.6 s: every command was held 20% longer
+        # than in simulation and the battery model, which divides by CONTROL_TICK_SECONDS, overestimated speed by 20%.)
+        next_t = time.monotonic()
         while self.running:
             if self.paused:
                 await self.robot.stop()
                 await asyncio.sleep(0.1)
+                next_t = time.monotonic()
                 continue
             await self._tick()
-            await asyncio.sleep(cfg.CONTROL_TICK_SECONDS)
+            next_t += cfg.CONTROL_TICK_SECONDS
+            now = time.monotonic()
+            if next_t < now:                 # a tick overran: don't try to catch up with a burst of ticks
+                next_t = now
+            await asyncio.sleep(next_t - now)
         await self.robot.stop()
 
     async def pause(self):

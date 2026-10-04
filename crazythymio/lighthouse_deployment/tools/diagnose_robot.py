@@ -41,6 +41,6 @@ else:
 print(f"robot-{n}: {cause}\n          -> FIX: {fix}\n          last console line: {last}")
 if mark and thymio_on_bus:
     subprocess.run(["ssh", "-i", key, "-o", "BatchMode=yes", "-o", "IdentitiesOnly=yes", f"tugay@{IPS[n]}",
-                    "pkill -f '[r]un_hebbian.py' ; sleep 0.5; cd ~/Desktop/crazy_thymio/lighthouse_deployment && ../.venv/bin/python tools/thymio_led.py 32 0 0"],
+                    "pkill -f '[r]un_hebbian.py' ; sleep 0.5; cd ~/Desktop/crazy_thymio/lighthouse_deployment && ../.venv/bin/python tools/thymio_wiggle.py 4"],
                    capture_output=True, text=True, timeout=40)
-    print(f"          robot-{n}'s Thymio top LED is now RED")
+    print(f"          robot-{n} just WIGGLED left-right 4 times -- that is the one (again: tools/identify.sh {n})")

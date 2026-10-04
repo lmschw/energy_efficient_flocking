@@ -108,23 +108,6 @@ ROTATION_SIGN = 1.0
 # +1.0: Lighthouse yaw (CCW from +x) increases in the same sense as the simulation's heading.
 # Flip only if robots demonstrably turn the wrong way.
 
-BOARD_OFFSET_M = {
-    # Vector from each robot's Crazyflie board to its Thymio's centre of rotation (board frame: x forward, y left), m.
-    # MEASURED 2026-10-04 with tools/measure_offset.sh (lighthouse_config/board_offset.csv). Written to the firmware's
-    # hebb.offx / hebb.offy parameters at connect (the firmware then broadcasts the TRUE centre to every neighbour).
-    # The upstream rig's fixed (-0.09, +0.04) was 8.7-9.3 cm wrong on every robot: each robot's reported position swung
-    # around a ~9 cm circle whenever it turned, which made its neighbours' LJ forces jitter.
-    "robot-1": (-0.0060, +0.0186),   # error was 8.7 cm, fit residual 0.1 cm
-    "robot-2": (-0.0053, +0.0185),   # error was 8.7 cm, fit residual 0.1 cm
-    "robot-3": (-0.0025, +0.0209),   # error was 9.0 cm, fit residual 0.2 cm
-    "robot-4": (-0.0028, +0.0323),   # RE-MEASURED 2026-10-04 17:1x: centre stays within ~1 cm over a full turn (first fit had a glitch, residual 1.8 cm)
-    "robot-5": (+0.0007, +0.0293),   # error was 9.1 cm, fit residual 0.1 cm
-    "robot-6": (+0.0024, +0.0305),   # error was 9.3 cm, fit residual 0.0 cm
-    "robot-7": (-0.0050, +0.0179),   # error was 8.8 cm, fit residual 0.2 cm; re-check 2026-10-04: centre stays within 0.5 cm (one glitch sample ignored)
-}
-
-BOARD_OFFSET_DEFAULT_M = (-0.0025, 0.021)    # fleet median, also the firmware's built-in default
-
 LOG_PERIOD_MS = 20
 # How often the Pi receives the own pose and the neighbour table from the Crazyflie over USB. Was 100 ms; data that is up
 # to 100 ms old adds directly to the control delay (measured to make the LJ swarm oscillate in heading).
