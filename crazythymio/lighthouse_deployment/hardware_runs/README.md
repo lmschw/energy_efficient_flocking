@@ -61,6 +61,13 @@ start/stop spread across robots: < 0.1 s.
 ## Known data caveats
 * Lighthouse occasionally reports one sample ~10 cm off (seen twice in calibration spins) -- use a median filter or drop
   isolated jumps > 5 cm in one tick.
+* **Estimate jumps on collisions:** when robots touch, a robot's Lighthouse/Kalman estimate can jump by > 0.3 m per tick
+  and drift for seconds (81% of jump onsets in plain runs coincide with IR contact vs 32% of ticks overall). LJ (no
+  contact) 0.1% of ticks affected, plain 2.0%, clamped (reps 1-7, 11) ~1%. Runs are kept (the collisions are the
+  controller's behaviour); mask steps > 0.3 m/tick and the following excursion in trajectory analyses, or report with/without.
+* **Robot-6 failure 2026-10-05 ~23:09-23:16:** estimate wrong from the first tick (x = +4 .. +90 m) in clamped reps 9 and 10,
+  diverged mid-arena at 7 s in rep 8, dropped ticks in rep 11 -> all four moved to `_tests_and_trials_2026-10-04/INVALID_*`
+  and repeated. `run_swarm_fast.sh` now also rejects a run when a robot's start position is outside the arena.
 * Fixed condition order (no interleaving): slow drifts (Thymio battery level, room) line up with condition.
 * Deployment adaptations to state in the paper: see `../FLEET.md` and the comments in `controller_config.snapshot.py`
   (LJ scaled to r0 = 0.5 m, direction-aware avoidance, turn priority at wheel saturation, simulated battery,
