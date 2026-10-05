@@ -1,0 +1,44 @@
+Couldn't load link driver: Could not open usb://0
+
+Traceback (most recent call last):
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/crazyflie/__init__.py", line 231, in open_link
+    self.link = cflib.crtp.get_link_driver(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/crtp/__init__.py", line 99, in get_link_driver
+    instance.connect(uri, link_quality_callback, link_error_callback)
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/crtp/usbdriver.py", line 91, in connect
+    raise Exception('Could not open {}'.format(self.uri))
+Exception: Could not open usb://0
+
+Traceback (most recent call last):
+  File "/home/tugay/Desktop/crazy_thymio/lighthouse_deployment/run_hebbian.py", line 299, in <module>
+    asyncio.run(main())
+  File "/usr/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/tugay/Desktop/crazy_thymio/lighthouse_deployment/run_hebbian.py", line 233, in main
+    await robot.connect()
+  File "/home/tugay/Desktop/crazy_thymio/lighthouse_deployment/lighthouse_robot.py", line 184, in connect
+    self.board.connect()
+  File "/home/tugay/Desktop/crazy_thymio/lighthouse_deployment/lighthouse_robot.py", line 115, in connect
+    self.scf.open_link()
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/crazyflie/syncCrazyflie.py", line 95, in open_link
+    raise Exception(self._error_message)
+Exception: Couldn't load link driver: Could not open usb://0
+
+Traceback (most recent call last):
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/crazyflie/__init__.py", line 231, in open_link
+    self.link = cflib.crtp.get_link_driver(
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/crtp/__init__.py", line 99, in get_link_driver
+    instance.connect(uri, link_quality_callback, link_error_callback)
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/crtp/usbdriver.py", line 91, in connect
+    raise Exception('Could not open {}'.format(self.uri))
+Exception: Could not open usb://0
+

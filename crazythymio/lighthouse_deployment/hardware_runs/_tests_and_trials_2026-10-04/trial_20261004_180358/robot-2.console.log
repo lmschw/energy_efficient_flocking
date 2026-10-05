@@ -1,0 +1,6 @@
+Error no LogEntry to handle id=3
+waiting for a steady Lighthouse pose ...
+READY -- waiting for the go signal
+running, logging to logs/20261004_180358/robot-2_1791129859.csv  (Ctrl-C to stop)
+[robot-2] implausible 0.86 m/s (0.43 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-2] implausible 1.13 m/s (0.57 m in one tick) -- treating as a manual relocation, no battery drain.

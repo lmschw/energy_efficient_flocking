@@ -1,0 +1,3 @@
+run 20261005_214754: hebbian plain_seed123_best.npy, logging to logs/20261005_214754/robot-7_1791136834.csv
+[robot-7] implausible 0.48 m/s (0.24 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-7] implausible 0.65 m/s (0.32 m in one tick) -- treating as a manual relocation, no battery drain.

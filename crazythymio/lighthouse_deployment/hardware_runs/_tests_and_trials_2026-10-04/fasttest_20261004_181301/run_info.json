@@ -1,0 +1,3 @@
+{"tag": "fasttest", "stamp": "20261004_181301", "controller": "idle", "lj_r0": "n/a", "lj_epsilon_scaled": "no", "genome": "none",
+ "robots": "2 4 5 7", "took_part_ready": "4 2 5 7", "not_ready": "", "reported_done": "4 2 5 7", "hostnames": "robot-2,robot-4,robot-5,robot-7", "ids": "233,232,236,234", "duration_s": 3, "start_epoch": 1791130404,
+ "safety_layers": "off", "pi_clock_offset_s": {"robot-2": -282.918, "robot-4": -3.027, "robot-5": -310.595, "robot-7": -278.018}, "corridor_y": "-2.04 1.50", "corridor_x": "none", "code_version": "0b0bd68+uncommitted", "deployed_code_hash": "e93aa8a11934"}

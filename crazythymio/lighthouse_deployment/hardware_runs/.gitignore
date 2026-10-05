@@ -1,0 +1,5 @@
+# The repository's top-level .gitignore excludes *.json and *.txt everywhere. In THIS folder they are part of the data
+# (run_info.json = run metadata; robot-N.console.txt = per-run console), so re-include them.
+!*.json
+!*.txt
+!*.log

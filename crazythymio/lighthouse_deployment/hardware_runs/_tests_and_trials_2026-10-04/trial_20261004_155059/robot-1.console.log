@@ -1,0 +1,22 @@
+waiting for a steady Lighthouse pose ...
+READY -- waiting for the go signal
+running, logging to logs/20261004_155059/robot-1_1791121883.csv  (Ctrl-C to stop)
+))
+  File "/usr/lib/python3.11/asyncio/runners.py", line 190, in run
+    return runner.run(main)
+           ^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.11/asyncio/base_events.py", line 653, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "/home/tugay/Desktop/crazy_thymio/lighthouse_deployment/run_hebbian.py", line 281, in main
+    await robot.connect()
+  File "/home/tugay/Desktop/crazy_thymio/lighthouse_deployment/lighthouse_robot.py", line 192, in connect
+    await self.thymio.connect()
+  File "/home/tugay/Desktop/crazy_thymio/lighthouse_deployment/lighthouse_robot.py", line 58, in connect
+    await self.node.lock()
+  File "/home/tugay/Desktop/crazy_thymio/.venv/lib/python3.11/site-packages/tdmclient/clientasyncnode.py", line 61, in lock
+    raise NodeLockError(self.status)
+tdmclient.clientasync.NodeLockError: Node lock error (current status: busy)

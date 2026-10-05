@@ -1,0 +1,31 @@
+waiting for a steady Lighthouse pose ...
+running, logging to logs/20261004_150516/robot-6_1791119125.csv  (Ctrl-C to stop)
+Got link error callback [Error communicating with the Crazyflie ,it has probably been unplugged!
+Exception:Crazyflie disconnected
+
+Traceback (most recent call last):
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/drivers/cfusb.py", line 168, in receive_packet
+    dataIn = self.handle.read(0x81, 64, timeout=20)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tugay/Desktop/crazy_thymio/.venv/lib/python3.11/site-packages/usb/core.py", line 1029, in read
+    ret = fn(
+          ^^^
+  File "/home/tugay/Desktop/crazy_thymio/.venv/lib/python3.11/site-packages/usb/backend/libusb1.py", line 846, in bulk_read
+    return self.__read(self.lib.libusb_bulk_transfer,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tugay/Desktop/crazy_thymio/.venv/lib/python3.11/site-packages/usb/backend/libusb1.py", line 954, in __read
+    _check(retval)
+  File "/home/tugay/Desktop/crazy_thymio/.venv/lib/python3.11/site-packages/usb/backend/libusb1.py", line 604, in _check
+    raise USBError(_strerror(ret), ret, _libusb_errno[ret])
+usb.core.USBError: [Errno 19] No such device (it may have been disconnected)
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/crtp/usbdriver.py", line 237, in run
+    data = self.cfusb.receive_packet()
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/tugay/Desktop/crazy_thymio/crazyflie-lib-python/cflib/drivers/cfusb.py", line 175, in receive_packet
+    raise IOError('Crazyflie disconnected')
+OSError: Crazyflie disconnected
+] in state [2]

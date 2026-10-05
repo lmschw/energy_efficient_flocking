@@ -1,0 +1,4 @@
+waiting for Lighthouse pose ...
+running, logging to logs/20261004_145929/robot-5_1791118777.csv  (Ctrl-C to stop)
+[robot-5] implausible 14.02 m/s (7.01 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 1.06 m/s (0.53 m in one tick) -- treating as a manual relocation, no battery drain.

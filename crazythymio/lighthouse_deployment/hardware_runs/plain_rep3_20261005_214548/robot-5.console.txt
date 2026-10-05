@@ -1,0 +1,19 @@
+run 20261005_214548: hebbian plain_seed123_best.npy, logging to logs/20261005_214548/robot-5_1791136966.csv
+[robot-5] implausible 196.30 m/s (98.15 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 0.59 m/s (0.30 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 1.08 m/s (0.54 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 0.49 m/s (0.25 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 1.60 m/s (0.80 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 1.94 m/s (0.97 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 0.97 m/s (0.48 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 7.81 m/s (3.91 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 7.98 m/s (3.99 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 1.16 m/s (0.58 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 1.21 m/s (0.60 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 4.96 m/s (2.48 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 3.91 m/s (1.95 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 2.10 m/s (1.05 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 2.16 m/s (1.08 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 2.12 m/s (1.06 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 0.56 m/s (0.28 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 0.88 m/s (0.44 m in one tick) -- treating as a manual relocation, no battery drain.

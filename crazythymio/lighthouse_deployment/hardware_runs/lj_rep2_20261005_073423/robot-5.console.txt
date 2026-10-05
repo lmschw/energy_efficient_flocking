@@ -1,0 +1,3 @@
+run 20261005_073423: lj none, logging to logs/20261005_073423/robot-5_1791131762.csv
+[robot-5] implausible 0.75 m/s (0.37 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-5] implausible 1.06 m/s (0.53 m in one tick) -- treating as a manual relocation, no battery drain.

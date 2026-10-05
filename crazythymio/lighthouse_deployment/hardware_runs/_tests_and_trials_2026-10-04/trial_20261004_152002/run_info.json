@@ -1,0 +1,3 @@
+{"tag": "trial", "stamp": "20261004_152002", "controller": "lj", "lj_r0": "0.5", "lj_epsilon_scaled": "yes", "genome": "none",
+ "robots": "1 2 3 4 5 6 7", "hostnames": "robot-1,robot-2,robot-3,robot-4,robot-5,robot-6,robot-7", "ids": "1,233,235,232,236,226,234", "duration_s": 30, "start_epoch": 1791120022,
+ "safety_layers": "off", "corridor_y": "-2.04 1.50", "corridor_x": "none", "code_version": "d2151e5+uncommitted"}

@@ -1,0 +1,3 @@
+{"tag": "trial", "stamp": "20261004_154120", "controller": "lj", "lj_r0": "0.5", "lj_epsilon_scaled": "yes", "genome": "none",
+ "robots": "1 2 3 4 5 6 7", "took_part_ready": "1 2 3 4 5 6 7", "not_ready": "", "hostnames": "robot-1,robot-2,robot-3,robot-4,robot-5,robot-6,robot-7", "ids": "1,233,235,232,236,226,234", "duration_s": 30, "start_epoch": 1791121318,
+ "safety_layers": "off", "pi_clock_offset_s": {"robot-1": -0.830, "robot-2": -0.532, "robot-3": -0.255, "robot-4": -0.966, "robot-5": -0.674, "robot-6": -0.385, "robot-7": -1.093}, "corridor_y": "-2.04 1.50", "corridor_x": "none", "code_version": "d2151e5+uncommitted"}
