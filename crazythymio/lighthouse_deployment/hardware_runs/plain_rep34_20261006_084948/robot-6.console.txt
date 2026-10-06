@@ -1,0 +1,17 @@
+run 20261006_084948: hebbian plain_seed123_best.npy, logging to logs/20261006_084948/robot-6_1791147472.csv
+[robot-6] implausible 0.59 m/s (0.30 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 1.42 m/s (0.71 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 2.90 m/s (1.45 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 5.00 m/s (2.50 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 1.52 m/s (0.76 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 3.19 m/s (1.60 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 5.40 m/s (2.70 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 9.88 m/s (4.94 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 4.66 m/s (2.33 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 4.88 m/s (2.44 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 1.10 m/s (0.55 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 7.43 m/s (3.71 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 6.59 m/s (3.30 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 1.35 m/s (0.68 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 1.90 m/s (0.95 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-6] implausible 0.66 m/s (0.33 m in one tick) -- treating as a manual relocation, no battery drain.

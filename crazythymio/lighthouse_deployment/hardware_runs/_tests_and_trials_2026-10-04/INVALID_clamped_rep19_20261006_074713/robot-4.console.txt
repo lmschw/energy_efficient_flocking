@@ -1,0 +1,25 @@
+run 20261006_074713: hebbian plain_seed123_clamped_best.npy, logging to logs/20261006_074713/robot-4_1791144765.csv
+[robot-4] implausible 0.45 m/s (0.22 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 0.52 m/s (0.26 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 0.55 m/s (0.28 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 1.02 m/s (0.51 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 1.40 m/s (0.70 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 2.10 m/s (1.05 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 2.11 m/s (1.05 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 2.62 m/s (1.31 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 3.02 m/s (1.51 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 3.42 m/s (1.71 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 3.81 m/s (1.90 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 4.27 m/s (2.14 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 2.98 m/s (1.49 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 2.30 m/s (1.15 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 2.79 m/s (1.39 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 2.88 m/s (1.44 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 3.14 m/s (1.57 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 3.27 m/s (1.63 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 2.57 m/s (1.29 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 2.98 m/s (1.49 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 3.07 m/s (1.54 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 3.16 m/s (1.58 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 3.08 m/s (1.54 m in one tick) -- treating as a manual relocation, no battery drain.
+[robot-4] implausible 3.25 m/s (1.62 m in one tick) -- treating as a manual relocation, no battery drain.

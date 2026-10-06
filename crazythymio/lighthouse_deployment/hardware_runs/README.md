@@ -11,6 +11,8 @@ different pose pipeline (`ants26_replication/hardware_deployment/`). Every `run_
 hardware_runs/
   <condition>_rep<k>_<YYYYmmdd_HHMMSS>/   one experiment run, condition = lj | plain | clamped, k = 1..30
   schedule_30x_lj-plain-clamped.txt       the fixed run order (30 x lj, then 30 x plain, then 30 x clamped)
+  schedule_reps31-<n>_lj-plain_interleaved.txt   extra repetitions lj/plain 31.. recorded AFTER the main block, alternating
+                                          (lj 31, plain 31, lj 32, ...); same settings, ordinary lj_rep<k>/plain_rep<k> folders
   _code/<hash>/                           exact code + genomes + calibration used (one copy per code version)
   _tests_and_trials_2026-10-04/           bring-up tests and trials -- NOT experiment data
 ```
