@@ -21,8 +21,8 @@
 \usepackage{todonotes}
 \usepackage{svg}
 
-% Revision markup: changed or new text is red (xcolor is loaded by todonotes).
-\newcommand{\rev}[1]{\textcolor{red}{#1}}
+% Revision markup: \rev{} marks changed or new text; redefine as \textcolor{red}{#1} to highlight it.
+\newcommand{\rev}[1]{#1}
 
 %
 \begin{document}
@@ -102,13 +102,11 @@ This paper is organised as follows: Section~\ref{sec:methodology} presents the m
 The methodology is heavily based on the framework presented in~\cite{mahdavi2026energy} which in turn bases its methodology on~\cite{vandiggelen2025emergentheterogeneousswarmcontrol}. In both works as well as our own, every robot is equipped with a neural controller. The weights of the controller are updated by Hebbian learning rules which are learned through an evolutionary algorithm. All evolutionary and simulated validation experiments are performed in a 2D kinematic Python simulator.
 The full workflow is depicted in Figure~\ref{fig:ES_overview}.
 
-% CHECK: if ES_layout.png still shows the old three-stage pipeline, replace it with
-% figures/method_pipeline (upload figures/method_pipeline.pdf from the repo).
 \begin{figure}[t]
 \centering
-\includegraphics[width=1\textwidth]{Images/Methodology/ES_layout.png}
+\includegraphics[width=\textwidth]{figures/paper_method_overview}
 \caption{\textbf{Overview of the Methodology.}
-    Our setup comprises a swarm with robots, each equipped with a neural network controller. Each swarm shares one set of Hebbian learning rules, which are learned by the CMA-ES algorithm through evolution. The robots are simulated in the windy arena for fitness calculation.} \label{fig:ES_overview}
+    Every robot runs its own neural network, whose weights are updated at every step by Hebbian learning rules. The whole swarm shares one set of rules, which CMA-ES evolves in two stages with 20 robots in the windy simulated corridor. Each generation scores every candidate set of rules by simulating the swarm. The best Stage~2 rules are then compared with the baseline in simulation and run on real robots.} \label{fig:ES_overview}
 \end{figure}
 
 \subsection{Individual Robot Neural Controller}
@@ -116,19 +114,8 @@ We consider differential-drive ground robots modeling Thymio-II robots, the hard
 
 \begin{figure}[t]
   \centering
-  \subfloat[Bearing\label{fig:bearing}]{
-    \begin{minipage}[t]{0.35\textwidth}
-       \centering
-      \includegraphics[width=0.7\linewidth]{Images/Methodology/quadrants.png}
-    \end{minipage}
-  }
-  \subfloat[Range\label{fig:range}]{
-    \begin{minipage}[t]{0.35\textwidth}
-      \centering
-      \includegraphics[width=0.7\linewidth]{Images/Methodology/quadrants_range.png}
-    \end{minipage}
-  }
-  \caption{Sensing capabilities of the individual robots.}
+  \includegraphics[width=0.5\textwidth]{figures/paper_method_sensing}
+  \caption{Sensing of an individual robot, drawn in its own frame (heading up). In each quadrant $q$, the robot senses only the nearest neighbour within the sensing radius $R$: its distance $d_q$ and its bearing $\psi_q$, measured counter-clockwise from the quadrant's clockwise edge. An empty quadrant reads $d_q = R$, $\psi_q = 0$.}
   \label{fig:quadrants}
 \end{figure}
 
@@ -222,7 +209,7 @@ Our simulation environment is a 10-meter-wide corridor along which the agents ca
 
 The draining of the battery is simulated using the three components proposed by~\cite{mahdavi2026energy}: 1) the wind drag $P_\text{wind}$, 2) motor consumption $P_\text{mot}$, and 3) idle consumption due to onboard electronics $P_\text{idle}$. The latter two components are independent of the wind and are included to ensure termination even if the agents choose not to move. 
 
-The wind is modelled as a two-dimensional wind field using a ray-marching scheme (Figure~\ref{fig:wind}). The arena is split into $N_x \times N_y$ cells ($50 \times 50$ over the moving $10 \times 10$\,m frame, i.e.\ cells of about $0.2$\,m) with a free-stream wind speed $U_\infty=100\%$ (percentage scale) blowing along $+x$. For the wind, each robot is an obstacle disc of radius $r_w = 0.15$\,m, larger than its physical radius of $0.055$\,m. The wind-percentage field $U^\%_{i,j}\in[0,100\%]$ at each cell $(i,j)$ is propagated left-to-right (like a ray) according to five simple rules, applied in every row as the ray crosses one column of cells: (1) on entering a robot's disc, $U^\%$ drops by $25\%$ of its value, to no less than $30\%$; (2) while inside the same disc it stays constant; (3) on passing directly from one robot's disc into another's it drops by $25\%$ again; (4) on leaving a disc it stays constant; (5) in free space it recovers towards $U_\infty$ by a fraction $\lambda\,\Delta x$ of the remaining deficit per cell, with $\lambda = 1\,\text{m}^{-1}$, so a wake fills in over about a metre. The field is then smoothed with a normalised exponential kernel $\propto e^{-0.5(|\Delta i| + |\Delta j|)}$, and cells that lie deep inside a wide band of wake across the wind are deepened further (to no less than $10\%$). Several robots side by side therefore shelter those behind them much more than a single robot does. A second smoothing pass follows. Each robot takes its wind from the cell just upstream of it. The procedure also mimics wake formation behind groups of robots. An example wake behind a wall of robots is shown in Figure~\ref{fig:wall_of_agents}.
+The wind is modelled as a two-dimensional wind field using a ray-marching scheme (Figure~\ref{fig:wind}). The arena is split into $N_x \times N_y$ cells ($50 \times 50$ over the moving $10 \times 10$\,m frame, i.e.\ cells of about $0.2$\,m) with a free-stream wind speed $U_\infty=100\%$ (percentage scale) blowing along $+x$. For the wind, each robot is an obstacle disc of radius $r_w = 0.15$\,m, larger than its physical radius of $0.055$\,m. The wind-percentage field $U^\%_{i,j}\in[0,100\%]$ at each cell $(i,j)$ is propagated left-to-right (like a ray) according to five simple rules, applied in every row as the ray crosses one column of cells: (1) on entering a robot's disc, $U^\%$ drops by $25\%$ of its value, to no less than $30\%$; (2) while inside the same disc it stays constant; (3) on passing directly from one robot's disc into another's it drops by $25\%$ again; (4) on leaving a disc it stays constant; (5) in free space it recovers towards $U_\infty$ by a fraction $\lambda\,\Delta x$ of the remaining deficit per cell, with $\lambda = 1\,\text{m}^{-1}$, so a wake fills in over about a metre. The field is then smoothed with a normalised exponential kernel $\propto e^{-0.5(|\Delta i| + |\Delta j|)}$, and cells that lie deep inside a wide band of wake across the wind are deepened further (to no less than $10\%$). Several robots side by side therefore shelter those behind them much more than a single robot does. A second smoothing pass follows. Each robot takes its wind from the cell just upstream of it. The procedure also mimics wake formation behind groups of robots. Figure~\ref{fig:wind} shows the wake behind a single robot and behind a column of three.
 
 The resulting $U^\%_{i,j}$ provides the local wind speed percentage. If we scale it with the free-stream physical wind speed $V_\infty = 10~\text{m/s}$:
 \begin{equation}
@@ -271,19 +258,8 @@ This approximation of aerodynamic disturbances and energy consumption allows rea
 
 \begin{figure}[t]
   \centering
-  \subfloat[Ray–marching scheme\label{fig:Wind_Simulation}]{
-    \begin{minipage}[t]{0.48\textwidth}
-      \centering
-      \includegraphics[width=0.60\linewidth]{Images/Methodology/Wind_Simulation.png}
-    \end{minipage}
-  }\hfill
-  \subfloat[Wake behind a vertical column of three agents\label{fig:wall_of_agents}]{
-    \begin{minipage}[t]{0.48\textwidth}
-     \centering
-      \includesvg[width=.65\linewidth,inkscapelatex=false]{Images/Methodology/Column_of_Agents.svg}
-    \end{minipage}
-  }
-  \caption{Illustrations of the wind–field model. (a) Rays propagate left–to–right and lose speed percentage when they intersect a robot. (b) When agents align vertically, a thick low–speed wake forms; the legend shows wind speed as a percentage of free-stream wind speed (0\% = navy, 100\% = yellow).}
+  \includegraphics[width=\textwidth]{figures/paper_method_wind}
+  \caption{The wind-field model, computed on the simulation's grid. A robot $0.6$\,m behind (a) a single robot and (b) a column of three robots. The numbers give the wind speed $U^\%$ that each robot experiences: the column shelters the robot behind it much more than a single robot does. Robots are drawn at twice their size.}
   \label{fig:wind}
 \end{figure}
 
@@ -295,7 +271,7 @@ This approximation of aerodynamic disturbances and energy consumption allows rea
 
 We deploy two conditions on hardware: the Stage~2 controller and the baseline. \rev{Both share the same deployment-time brake, so only the genome (or, for the baseline, the hand-designed model) driving the robots differs between them.} \rev{The brake scales a robot's forward speed down as it approaches a robot ahead of it, while leaving its turning untouched:}
 \begin{equation}
-\color{red}v_i \leftarrow v_i \cdot C(g^i_{\text{ahead}};\,0.03, 0.20),
+v_i \leftarrow v_i \cdot C(g^i_{\text{ahead}};\,0.03, 0.20),
 \qquad
 C(g; g_{\text{in}}, g_{\text{out}}) = \operatorname{clip}\!\Big(\tfrac{g - g_{\text{in}}}{g_{\text{out}} - g_{\text{in}}},\,0,\,1\Big),
 \label{eq:brake}
@@ -454,7 +430,7 @@ In simulation, the controller does not outperform the baseline in swarms as smal
 \rev{Overall, the evolved controller shares the exposed front among more robots than the baseline on real robots as in simulation, and changes its front robot as often as in simulation.} \rev{As in simulation, this exchange is not a balanced rotation in the sense of Voelkl et al.~\cite{voelkl2015}.}
 
 \begin{table}[t]
-\centering\color{red}
+\centering
 \caption{Leadership metrics on the real robots ($n=7$), median [interquartile range] over 30 trials per controller, computed on each trial's longest window with valid positions (Section~\ref{sec:hardware_results}). Difference from the baseline (Mann-Whitney U): $^{ns}p\geq0.05$, $^{*}p<0.05$, $^{**}p<0.01$, $^{***}p<0.001$. Compare against Table~\ref{tab:leadership_hardware_sim}.}
 \label{tab:leadership_hardware_hw}
 \small
@@ -473,7 +449,7 @@ Hierarchy steepness & 0.79 [0.75, 0.89]$^{ns}$ & 0.76 [0.67, 0.84] \\
 \end{table}
 
 \begin{table}[t]
-\centering\color{red}
+\centering
 \caption{As Table~\ref{tab:leadership_hardware_hw}, for the matched simulations: 30 simulations per controller with seven robots, with the same methodology as Table~\ref{tab:leadership}.}
 \label{tab:leadership_hardware_sim}
 \small
@@ -492,9 +468,9 @@ Hierarchy steepness & 0.79 [0.70, 0.81]$^{ns}$ & 0.82 [0.75, 0.87] \\
 \end{table}
 
 \begin{figure}[t]
-  \centering\color{red}
+  \centering
   \includegraphics[width=\linewidth]{figures/hardware_lighthouse_no_clamp}
-  \caption{Real robots ($n=7$). Top: trajectories in one trial per controller (the trial with the median front-occupancy entropy), over the window used for the metrics; dots mark the start positions and the wind blows towards $+x$. Bottom: front-occupancy entropy, front changes per minute and reciprocity for every real trial (left box of each pair) and for the 30 matched simulations with seven robots (hatched right box).}
+  \caption{Real robots ($n=7$). Top: trajectories in one trial per controller (the trial with the median front-occupancy entropy), over the window used for the metrics; dots mark the start positions and the wind blows towards $+x$. Bottom: front-occupancy entropy, front changes per minute and reciprocity for the 30 real trials (real) and for 30 simulations of the same controller with seven robots (sim.).}
   \label{fig:hardware_lighthouse}
 \end{figure}
 

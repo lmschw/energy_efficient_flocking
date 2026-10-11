@@ -217,7 +217,7 @@ def figure(raw, sim, conds, stem):
             ax.plot(R["P"][a:b, j, 0], R["P"][a:b, j, 1], lw=0.9)
             ax.plot(*R["P"][a, j], "k.", ms=3)
         ax.set_aspect("equal"); ax.set_xlim(-5.2, 1.6); ax.set_ylim(-2.7, 2.7)
-        ax.set_title(f"{LABEL[c]} ({rep.split('_')[1]})", fontsize=8); ax.tick_params(labelsize=7)
+        ax.set_title(LABEL[c], fontsize=8); ax.tick_params(labelsize=7)
         ax.set_xlabel("x [m]  (wind blows to +x)", fontsize=7)
         if i == 0: ax.set_ylabel("y [m]", fontsize=7)
         else: ax.set_yticklabels([])
@@ -229,6 +229,7 @@ def figure(raw, sim, conds, stem):
         rng = np.random.default_rng(0)
         for c in conds:
             for src, alpha in (("hw", 0.45), ("sim", 0.15)):
+                ticks.append((pos, "real" if src == "hw" else "sim."))
                 v = np.array([l[k] for l in raw[c]["lead"]] if src == "hw" else sim[c]["full"][k], float)
                 v = v[np.isfinite(v)]
                 bp = ax.boxplot([v], positions=[pos], widths=0.6, showfliers=False, patch_artist=True)
@@ -237,10 +238,13 @@ def figure(raw, sim, conds, stem):
                 ax.scatter(pos + rng.uniform(-0.15, 0.15, len(v)), v, s=4, color=COLOR[c], lw=0, zorder=3)
                 pos += 1
             pos += 0.5
-        ax.set_xticks([0.5 + 2.5 * i for i in range(len(conds))], [LABEL[c].replace(", ", ",\n") for c in conds], fontsize=7)
+        # Each box says what it is (real robots or matched n = 7 simulation); the controller sits under its pair.
+        ax.set_xticks([t for t, _ in ticks], [lab for _, lab in ticks], fontsize=6.5)
+        ax.tick_params(axis="x", length=2, pad=2)
+        for j, c in enumerate(conds):
+            ax.text(0.5 + 2.5 * j, -0.13, LABEL[c].replace(", ", ",\n"), fontsize=7.5, ha="center", va="top",
+                    fontweight="bold", color=COLOR[c], transform=ax.get_xaxis_transform())
         ax.set_ylabel(lab, fontsize=8); ax.tick_params(axis="y", labelsize=7); ax.grid(True, axis="y", ls=":", alpha=0.6)
-    fig.text(0.5, 0.01, "left box of each pair: real robots; hatched right box: matched simulation (n = 7)",
-             ha="center", fontsize=7)
     for ext in ("pdf", "png", "svg"):
         fig.savefig(f"{stem}.{ext}", dpi=200)
     plt.close(fig)
