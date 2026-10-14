@@ -158,6 +158,29 @@ def dragforce(agents, wind_rad, xVals, yVals, powerVals, n_agents, vel_actual, v
     return F_drag
 
 
+def apply_hw_brake(agents, vel):
+    """Hardware deployment brake (see config.HW_BRAKE_*): scales vel[:, 0] in place, per robot, by
+    the same rule as the deployment's _avoid_scale -- only neighbours within +-HW_BRAKE_CONE_DEG of
+    the direction of travel (sign of v included) count. Heading 0 faces +y, as in the motion model."""
+    cos_cone = np.cos(np.radians(config.HW_BRAKE_CONE_DEG))
+    span = config.HW_BRAKE_OUTER_GAP - config.HW_BRAKE_INNER_GAP
+    for i in range(agents.shape[0]):
+        v = vel[i, 0]
+        if v == 0.0:
+            continue
+        face = agents[i, 2] + np.pi / 2.0
+        sgn = 1.0 if v > 0 else -1.0
+        rel = agents[:, 0:2] - agents[i, 0:2]
+        dist = np.hypot(rel[:, 0], rel[:, 1])
+        dist[i] = np.inf
+        ahead = (rel[:, 0] * sgn * np.cos(face) + rel[:, 1] * sgn * np.sin(face)) >= cos_cone * dist
+        ahead &= dist > 1e-6
+        if ahead.any():
+            gap = dist[ahead].min() - 2.0 * config.ROBOT_RAD
+            vel[i, 0] = v * min(1.0, max(0.0, (gap - config.HW_BRAKE_INNER_GAP) / span))
+    return vel
+
+
 def batterydrainage(agents, vel_actual, F_drag, robot_rad, dt):
     n_agents = agents.shape[0]
     vel_vec = np.zeros((n_agents, 2))

@@ -114,7 +114,7 @@ def main():
     ax.set_xlabel("Distance travelled against the wind [m]")
     ax.set_ylabel("Mean remaining battery [% of starting charge]")
     ax.grid(True, ls=":", alpha=0.6)
-    ax.legend(fontsize=8, loc="upper left")
+    ax.legend(fontsize=8, loc="upper right")
     _save(fig, "paper_dist_vs_battery_n20_no_clamp")
 
 

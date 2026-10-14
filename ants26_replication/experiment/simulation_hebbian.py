@@ -29,14 +29,14 @@ try:
     from hebbian_controller import init_weights, hebbian_step
     from wind_physics import (
         wrap_to_pi, RayTraceCircularRobots, dragforce, batterydrainage, _spawn_agents,
-        agent_wind_percentage, _open_video_writer,
+        agent_wind_percentage, _open_video_writer, apply_hw_brake,
     )
 except ModuleNotFoundError:
     from .sensor_model import get_sensor_data
     from .hebbian_controller import init_weights, hebbian_step
     from .wind_physics import (
         wrap_to_pi, RayTraceCircularRobots, dragforce, batterydrainage, _spawn_agents,
-        agent_wind_percentage, _open_video_writer,
+        agent_wind_percentage, _open_video_writer, apply_hw_brake,
     )
 
 
@@ -311,6 +311,8 @@ def simulate_hebbian_episode(abcd_rules, seed=None, n_agents=None, wind_enabled=
             vel[i, 0] = v_i
             vel[i, 1] = w_i
             weights[i] = (w1n, w2n, w3n)
+        if config.HW_BRAKE_ENABLED:
+            apply_hw_brake(agents, vel)
 
         vel_actual, agents, xRange, pair_hits, wall_hits, mean_pairwise_dist, proximity_step = _move(
             agents, vel, dt, n_agents, min_dist, walls,

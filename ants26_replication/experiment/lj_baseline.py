@@ -12,10 +12,10 @@ import numpy as np
 
 try:
     import config
-    from wind_physics import wrap_to_pi, RayTraceCircularRobots, dragforce, batterydrainage, _spawn_agents
+    from wind_physics import wrap_to_pi, RayTraceCircularRobots, dragforce, batterydrainage, _spawn_agents, apply_hw_brake
 except ModuleNotFoundError:
     from . import config
-    from .wind_physics import wrap_to_pi, RayTraceCircularRobots, dragforce, batterydrainage, _spawn_agents
+    from .wind_physics import wrap_to_pi, RayTraceCircularRobots, dragforce, batterydrainage, _spawn_agents, apply_hw_brake
 
 
 def _collision_and_window_bookkeeping(agents, n_agents, min_dist, walls, collision_counter):
@@ -182,6 +182,8 @@ def simulate_lj_baseline(rules=None, seed=None, n_agents=None, record_trajectory
     while not batteryEmpty:
         vel[:, :] = _flocking_velocity_command(agents, n_agents, r0, epsilon, k_align, k_goal, K1, K2, U,
                                                 r_cut, r_min, R_align)
+        if config.HW_BRAKE_ENABLED:
+            apply_hw_brake(agents, vel)
 
         vel_actual, agents, xRange, collision_counter = move(agents, vel, dt, n_agents, min_dist, walls,
                                                                collision_counter)

@@ -4,9 +4,10 @@
 1- vs. 5-agent trajectories for the stage-1 vs. stage-2 controller (the paper's Fig. 6).
 
 Controllers: the stage-1 (walk_upwind) and stage-2 (final) genomes of the unclamped
-plain_seed123 run, the clamped stage-2 genome, and the LJ baseline. The LJ baseline is also
-run with a 100-unit battery (instead of the LJ model's native 150) so the effect of that
-difference can be judged; it is reported in the JSON but not plotted.
+plain_seed123 run, the clamped stage-2 genome, and the LJ baseline. The LJ baseline runs with the
+same 100-unit battery as the evolved controllers; it is also run with the 150-unit battery of the
+original LJ code (which the paper's figures used before) so the effect of that difference can be
+judged; that run is reported in the JSON but not plotted.
 
 Usage: python paper_results.py   (runs in parallel; a few minutes on a multi-core machine)
 """
@@ -75,8 +76,8 @@ def eval_job(args):
     label, seed = args
     if label == "LJ baseline":
         return (label, seed, *_lj(seed, N_AGENTS, config.MAX_BATTERY))
-    if label == "LJ baseline, 100-unit battery":
-        return (label, seed, *_lj(seed, N_AGENTS, config.HEBBIAN_MAX_BATTERY))
+    if label == "LJ baseline, 150-unit battery":
+        return (label, seed, *_lj(seed, N_AGENTS, 150.0))
     path, cfg, *_ = CONTROLLERS[label]
     dist, batt, *_ = _hebbian(path, cfg, seed, N_AGENTS)
     return label, seed, float(dist), float(batt)
@@ -114,7 +115,7 @@ def _save(fig, name):
 
 def main():
     os.makedirs(OUT_DIR_FIG, exist_ok=True)
-    labels = list(CONTROLLERS) + ["LJ baseline, 100-unit battery"]
+    labels = list(CONTROLLERS) + ["LJ baseline, 150-unit battery"]
     with ProcessPoolExecutor() as pool:
         evals = list(pool.map(eval_job, [(l, s) for l in labels for s in SEEDS]))
         aware = list(pool.map(awareness_job, [(b, s) for b in (100.0, 50.0) for s in SEEDS]))
@@ -162,7 +163,7 @@ def main():
     ax.set_xlabel("Distance travelled against the wind [m]")
     ax.set_ylabel("Mean remaining battery [% of starting charge]")
     ax.grid(True, ls=":", alpha=0.6)
-    ax.legend(fontsize=8, loc="upper left")
+    ax.legend(fontsize=8, loc="upper right")
     _save(fig, "paper_dist_vs_battery_n20")
 
     # --- battery-awareness box plot ---

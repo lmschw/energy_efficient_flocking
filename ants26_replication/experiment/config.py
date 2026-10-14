@@ -563,8 +563,21 @@ HEBBIAN_EFF_DISTANCE_WEIGHT = 16.0
 # simulation_free_global_mod_2_LJ.py for the full version (video rendering, PyBullet
 # backend, CMA-ES training -- none of which this replication needs).
 # =====================================================================================
-MAX_BATTERY = 150.0          # LJ model's own battery scale (NOT HEBBIAN_MAX_BATTERY's 0-100
-MIN_BATTERY = 150.0          # scale) -- the baseline literally IS the LJ model, run as-is.
+MAX_BATTERY = 100.0          # same starting charge as HEBBIAN_MAX_BATTERY, so the baseline and the
+MIN_BATTERY = 100.0          # evolved controllers get the same energy budget. (The original LJ code
+                             # used 150 only to make its runs/videos last longer -- and since episodes
+                             # end when the first battery empties, 150 gave the baseline ~1.5x the
+                             # episode length and distance.) The LJ control law never reads it.
+
+# --- Hardware deployment brake (off by default; used only for the hardware-matched n=7 sims) ---
+# Port of crazythymio/lighthouse_deployment/hebbian_swarm_experiment.py::_avoid_scale (AGENT_AVOIDANCE_* in
+# its controller_config.py), which both hardware controllers run behind: v is scaled linearly from 1 at
+# HW_BRAKE_OUTER_GAP to 0 at HW_BRAKE_INNER_GAP (surface-to-surface gap) by the nearest neighbour within
+# +-HW_BRAKE_CONE_DEG of the direction of travel; w is never touched.
+HW_BRAKE_ENABLED = False
+HW_BRAKE_CONE_DEG = 60.0
+HW_BRAKE_OUTER_GAP = 0.20
+HW_BRAKE_INNER_GAP = 0.03
 
 DEFAULT_RULES = {
     "r0": 0.70, "epsilon": 0.5, "k_align": 0.0, "k_goal": 3.0, "K1": 0.05, "K2": 0.5, "U": 0.005,

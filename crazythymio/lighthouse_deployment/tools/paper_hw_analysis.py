@@ -1,11 +1,16 @@
 #!/usr/bin/env python3
-"""Paper analysis of the Lighthouse hardware runs (7 CrazyThymios) + the matched n=7 simulations.
+"""Paper analysis of the Lighthouse hardware runs (7 CrazyThymios) + the matched n=7 simulations (Stage 2 and
+baseline; the clamped controller is no longer analysed).
 
 Per controller the FIRST 30 USABLE trials in repetition order (usable = a valid window of >= 20 s, see below): trials
 of the main block (reps 1..30, fixed order lj -> plain -> clamped) that are not usable are replaced by the next usable
 repetitions 31.. (recorded afterwards, alternating lj / plain). Written to
 hardware_transfer_test/final/overleaf_summary/paper_hardware_lighthouse_summary.json (key "n30"), with one figure per
-paper version (figures/hardware_lighthouse.{pdf,png,svg} with clamped, figures/hardware_lighthouse_no_clamp.{...} without).
+figure (figures/hardware_lighthouse_no_clamp.{pdf,png,svg}).
+
+The matched simulations are run twice: with the same deployment brake as the robots (config.HW_BRAKE_ENABLED, a port
+of hebbian_swarm_experiment.py's _avoid_scale) and without it (as in the paper's other simulations), so the effect of
+the brake can be read off directly.
 
 Leadership metrics: exactly the functions used for the simulation tables (hardware_transfer_test/final/
 leadership_metrics.py), on all robots' positions on one 0.5 s grid (the simulation's dt).
@@ -28,7 +33,7 @@ RUNS = os.path.join(HERE, "..", "hardware_runs")
 FINAL = os.path.abspath(os.path.join(HERE, "..", "..", "..", "hardware_transfer_test", "final"))
 OUT_JSON = os.path.join(FINAL, "overleaf_summary", "paper_hardware_lighthouse_summary.json")
 FIG_DIR = os.path.join(FINAL, "overleaf_summary", "figures")
-SIM_CACHE = os.path.join(FINAL, "leadership_analysis", "seed_sweep_table_n7_first60s.json")
+SIM_CACHE = os.path.join(FINAL, "leadership_analysis", "seed_sweep_table_n7_hwbrake.json")
 sys.path.insert(0, FINAL)
 os.chdir(FINAL)                                     # leadership_metrics resolves genome/rule paths relative to itself
 import leadership_metrics as lm                     # noqa: E402
@@ -138,30 +143,39 @@ def summarise(vals, base=None):
     return e
 
 
+SIM_VARIANTS = ("full", "first60s", "full_nobrake", "first60s_nobrake")
+
+
 def sim_n7():
-    """Matched simulations (n=7, the 30 seeds 1000..1029 of the paper's seed sweeps): full episode (from
-    leadership_metrics.py's table) and the first 60 s only (the length of a hardware trial)."""
-    full = json.load(open(os.path.join(FINAL, "leadership_analysis", "seed_sweep_table_n7.json")))
+    """Matched simulations (n=7, the 30 seeds 1000..1029 of the paper's seed sweeps), with and without the deployment
+    brake: the whole episode until the first battery is empty ("full") and its first 60 s only (the length of a hardware
+    trial). Variant names without a suffix are the braked runs; "_nobrake" marks the runs without the brake."""
     if os.path.exists(SIM_CACHE):
-        first60 = json.load(open(SIM_CACHE))
+        rows = json.load(open(SIM_CACHE))
     else:
-        first60 = []
-        for c in SIM_NAME.values():
-            for s in range(1000, 1030):
-                pos, dt, _, _ = lm.run_trajectory(c, 7, seed=s)
-                first60.append(dict(condition=c, seed=s, **leadership(np.asarray(pos)[:121])))
-        json.dump(first60, open(SIM_CACHE, "w"), indent=1)
-    per = {}
-    for c, sc in SIM_NAME.items():
-        F = [r for r in full if r["condition"] == sc]
-        per[c] = {"full": {"front_changes_per_min": [r["persistence_filtered_rate_per_sec"] * 60 for r in F],
-                           "persist_share_pct": [100 * r["real_switches"] / r["raw_switches"] if r["raw_switches"] else np.nan for r in F],
-                           "front_occupancy_entropy": [r["front_occupancy_normalized_entropy"] for r in F],
-                           "reciprocity_r": [r["reciprocity_r"] for r in F],
-                           "hierarchy_entropy": [r["hierarchy_leadership_entropy"] for r in F],
-                           "hierarchy_steepness": [r["hierarchy_steepness"] for r in F]},
-                  "first60s": {k: [r[k] for r in first60 if r["condition"] == sc] for k in METRICS}}
-    return per
+        rows = []
+        for brake in (True, False):
+            with lm._ConfigOverride(HW_BRAKE_ENABLED=brake):
+                for c in ("plain", "lj"):
+                    for s in range(1000, 1030):
+                        pos, dt, _, _ = lm.run_trajectory(SIM_NAME[c], 7, seed=s)
+                        pos = np.asarray(pos)
+                        for window, P in (("full", pos), ("first60s", pos[:121])):
+                            rows.append(dict(condition=SIM_NAME[c], seed=s, brake=brake, window=window, **leadership(P)))
+        json.dump(rows, open(SIM_CACHE, "w"), indent=1)
+    return {c: {v: {k: [r[k] for r in rows if r["condition"] == SIM_NAME[c] and r["window"] == v.split("_")[0]
+                        and r["brake"] == (not v.endswith("_nobrake"))] for k in METRICS}
+                for v in SIM_VARIANTS} for c in ("plain", "lj")}
+
+
+def _paired_p(a, b):
+    """Two-sided Wilcoxon signed-rank p over the seeds where both values are finite (same seeds, same order);
+    1.0 when the two variants are identical on every seed (the test is undefined there)."""
+    a, b = np.asarray(a, float), np.asarray(b, float)
+    ok = np.isfinite(a) & np.isfinite(b)
+    if np.all(a[ok] == b[ok]):
+        return 1.0
+    return float(stats.wilcoxon(a[ok], b[ok]).pvalue)
 
 
 METRICS = ("front_changes_per_min", "persist_share_pct", "front_occupancy_entropy", "reciprocity_r",
@@ -194,10 +208,14 @@ def analyse(conds, n_trials, sim):
                   "hardware": {k: summarise([l[k] for l in L], None if c == "lj" else [l[k] for l in bl]) for k in METRICS},
                   "movement": {k: summarise([m[k] for m in M], None if c == "lj" else [m[k] for m in bm]) for k in MOVE},
                   "sim_n7": {v: {k: summarise(sim[c][v][k], None if c == "lj" else sim["lj"][v][k]) for k in METRICS}
-                             for v in ("full", "first60s")},
+                             for v in SIM_VARIANTS},
                   "per_run": L}
         res[c]["hw_vs_sim_full_p"] = {k: float(stats.mannwhitneyu(
             [l[k] for l in L if np.isfinite(l[k])], [s for s in sim[c]["full"][k] if np.isfinite(s)]).pvalue) for k in METRICS}
+        res[c]["hw_vs_sim_full_nobrake_p"] = {k: float(stats.mannwhitneyu(
+            [l[k] for l in L if np.isfinite(l[k])], [s for s in sim[c]["full_nobrake"][k] if np.isfinite(s)]).pvalue)
+            for k in METRICS}
+        res[c]["brake_effect_full_p"] = {k: _paired_p(sim[c]["full"][k], sim[c]["full_nobrake"][k]) for k in METRICS}
     return res, raw
 
 
@@ -221,28 +239,30 @@ def figure(raw, sim, conds, stem):
         ax.set_xlabel("x [m]  (wind blows to +x)", fontsize=7)
         if i == 0: ax.set_ylabel("y [m]", fontsize=7)
         else: ax.set_yticklabels([])
-    bot = fig.add_gridspec(1, 3, left=0.08, right=0.98, top=0.47, bottom=0.12, wspace=0.42)
+    bot = fig.add_gridspec(1, 3, left=0.08, right=0.98, top=0.47, bottom=0.18, wspace=0.42)
     for i, (k, lab) in enumerate((("front_occupancy_entropy", "Front occupancy entropy"),
                                   ("front_changes_per_min", "Front changes per minute"),
                                   ("reciprocity_r", "Reciprocity $r$"))):
         ax = fig.add_subplot(bot[0, i]); pos = 0; ticks = []
         rng = np.random.default_rng(0)
         for c in conds:
-            for src, alpha in (("hw", 0.45), ("sim", 0.15)):
-                ticks.append((pos, "real" if src == "hw" else "sim."))
-                v = np.array([l[k] for l in raw[c]["lead"]] if src == "hw" else sim[c]["full"][k], float)
+            for src, alpha, hatch, tick in (("hw", 0.45, None, "real"), ("full", 0.15, "///", "sim.\nbrake"),
+                                            ("full_nobrake", 0.15, "...", "sim.\nno\nbrake")):
+                ticks.append((pos, tick))
+                v = np.array([l[k] for l in raw[c]["lead"]] if src == "hw" else sim[c][src][k], float)
                 v = v[np.isfinite(v)]
                 bp = ax.boxplot([v], positions=[pos], widths=0.6, showfliers=False, patch_artist=True)
-                bp["boxes"][0].set(facecolor=COLOR[c], alpha=alpha, hatch=None if src == "hw" else "///")
+                bp["boxes"][0].set(facecolor=COLOR[c], alpha=alpha, hatch=hatch)
                 bp["medians"][0].set(color="k")
                 ax.scatter(pos + rng.uniform(-0.15, 0.15, len(v)), v, s=4, color=COLOR[c], lw=0, zorder=3)
                 pos += 1
             pos += 0.5
-        # Each box says what it is (real robots or matched n = 7 simulation); the controller sits under its pair.
-        ax.set_xticks([t for t, _ in ticks], [lab for _, lab in ticks], fontsize=6.5)
+        # Each box says what it is (real robots, or matched n = 7 simulation with / without the deployment brake);
+        # the controller sits under its three boxes.
+        ax.set_xticks([t for t, _ in ticks], [lab for _, lab in ticks], fontsize=6)
         ax.tick_params(axis="x", length=2, pad=2)
         for j, c in enumerate(conds):
-            ax.text(0.5 + 2.5 * j, -0.13, LABEL[c].replace(", ", ",\n"), fontsize=7.5, ha="center", va="top",
+            ax.text(1.0 + 3.5 * j, -0.25, LABEL[c].replace(", ", ",\n"), fontsize=7.5, ha="center", va="top",
                     fontweight="bold", color=COLOR[c], transform=ax.get_xaxis_transform())
         ax.set_ylabel(lab, fontsize=8); ax.tick_params(axis="y", labelsize=7); ax.grid(True, axis="y", ls=":", alpha=0.6)
     for ext in ("pdf", "png", "svg"):
@@ -252,12 +272,11 @@ def figure(raw, sim, conds, stem):
 
 def main():
     sim = sim_n7()
-    out = {"method": __doc__, "sim_n7_note": "seeds 1000-1029, random start in a 3x3 m square, paper LJ rules (r0 0.7 m); "
+    out = {"method": __doc__, "sim_n7_note": "seeds 1000-1029, random start in a 3x3 m square, paper LJ rules (r0 0.7 m), with ('full', 'first60s') and without ('*_nobrake') the deployment brake (HW_BRAKE_*); "
            "'full' = whole episode until the first battery is empty, 'first60s' = first 121 steps"}
     raws = {}
-    out["n30"], raws["n30"] = analyse(("lj", "plain", "clamped"), 30, sim)
+    out["n30"], raws["n30"] = analyse(("lj", "plain"), 30, sim)
     json.dump(out, open(OUT_JSON, "w"), indent=1, default=float)
-    figure(raws["n30"], sim, ("plain", "clamped", "lj"), os.path.join(FIG_DIR, "hardware_lighthouse"))
     figure(raws["n30"], sim, ("plain", "lj"), os.path.join(FIG_DIR, "hardware_lighthouse_no_clamp"))
     for key in ("n30",):
         print(f"\n===== {key}")
@@ -266,9 +285,12 @@ def main():
                   f"window {r['window_s']['median']:.1f} s median, flagged {r['flagged_samples_pct']:.1f}% of samples")
             for k in METRICS:
                 h, s, s6 = r["hardware"][k], r["sim_n7"]["full"][k], r["sim_n7"]["first60s"][k]
+                sn = r["sim_n7"]["full_nobrake"][k]
                 p = f"p={h['p_vs_baseline']:.1e}" if "p_vs_baseline" in h else ""
                 print(f"   {k:24s} hw {h['median']:7.2f} [{h['q25']:6.2f},{h['q75']:6.2f}] {p:10s} | sim {s['median']:6.2f} "
-                      f"[{s['q25']:6.2f},{s['q75']:6.2f}] | sim60 {s6['median']:6.2f} | hw-vs-sim p={r['hw_vs_sim_full_p'][k]:.1e}")
+                      f"[{s['q25']:6.2f},{s['q75']:6.2f}] | sim60 {s6['median']:6.2f} | hw-vs-sim p={r['hw_vs_sim_full_p'][k]:.1e}"
+                      f" | no brake {sn['median']:6.2f} [{sn['q25']:6.2f},{sn['q75']:6.2f}] hw-vs-sim p={r['hw_vs_sim_full_nobrake_p'][k]:.1e}"
+                      f" | brake effect p={r['brake_effect_full_p'][k]:.1e}")
             for k in MOVE:
                 m = r["movement"][k]; p = f"p={m['p_vs_baseline']:.1e}" if "p_vs_baseline" in m else ""
                 print(f"   {k:24s} {m['mean']:7.2f} +- {m['sd']:5.2f} {p}")

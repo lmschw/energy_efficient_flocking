@@ -118,7 +118,7 @@ class _ConfigOverride:
 
 
 BATTERY_SCALE = {  # metrics.json's "batt_pct" = average_batt / this * 100 -- see module docstring
-    "lj_baseline": config.MAX_BATTERY,             # 150.0, the LJ model's own scale
+    "lj_baseline": config.MAX_BATTERY,             # 100.0, same as the evolved controllers
     "plain_seed123": config.HEBBIAN_MAX_BATTERY,   # 100.0
     "plain_seed123_clamped": config.HEBBIAN_MAX_BATTERY,
 }
